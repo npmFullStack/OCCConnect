@@ -1,7 +1,7 @@
 // layout/AppLayout.jsx
 import React, { useEffect, useState, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquare, Users, User, LogOut, ChevronDown } from 'lucide-react'
+import { MessageSquare, Users, User, LogOut, ChevronDown, Users as UsersIcon } from 'lucide-react'
 import avatar1 from '../assets/avatars/avatar1.png'
 
 function AppLayout() {
@@ -9,6 +9,7 @@ function AppLayout() {
   const location = useLocation()
   const [user, setUser] = useState(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [onlineCount] = useState(34)
   const dropdownRef = useRef(null)
 
   useEffect(() => {
@@ -63,7 +64,7 @@ function AppLayout() {
       {/* Fixed Header */}
       <header className="fixed top-0 left-0 right-0 z-20 bg-white/90 backdrop-blur-sm border-b border-gray-200 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          {/* Logo - Same design as Home.jsx */}
+          {/* Logo */}
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-black tracking-tight">
               <span 
@@ -77,14 +78,14 @@ function AppLayout() {
                 OCC
               </span>
               <span 
-                className="text-secondary" 
+                className="text-secondary text-2xl" 
                 style={{ 
                   textShadow: '0 0 10px rgba(42, 59, 92, 0.3), 0 4px 8px rgba(0,0,0,0.1)',
                   WebkitTextStroke: '2px white',
                   textStroke: '2px white',
                 }}
               >
-                {' '}Connect
+                Connect
               </span>
             </h1>
           </div>
@@ -128,8 +129,20 @@ function AppLayout() {
         </div>
       </header>
 
-      {/* Main Content - with padding for fixed header */}
-      <main className="relative z-10 max-w-4xl mx-auto px-4 pt-20 pb-24">
+      {/* Online Users Counter - Below Header */}
+      <div className="fixed top-[72px] left-0 right-0 z-15 bg-white/70 backdrop-blur-sm border-b border-gray-100 px-4 py-1.5">
+        <div className="max-w-4xl mx-auto flex items-center justify-center">
+          <div className="flex items-center gap-1.5 text-xs">
+            <UsersIcon size={14} className="text-primary" />
+            <span className="font-semibold text-secondary">{onlineCount}</span>
+            <span className="text-gray-500">Online</span>
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content - with padding for fixed header and online counter */}
+      <main className="relative z-10 max-w-4xl mx-auto px-4 pt-[110px] pb-24">
         <Outlet />
       </main>
 

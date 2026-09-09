@@ -1,6 +1,6 @@
 // pages/ChatRoom.jsx
 import React, { useState, useRef, useEffect } from 'react'
-import { Send, Check, CheckCheck, LogOut } from 'lucide-react'
+import { Send, Check, CheckCheck, LogOut, X } from 'lucide-react'
 import Button from '../components/Button'
 import avatar2 from '../assets/avatars/avatar2.png'
 
@@ -48,6 +48,7 @@ function ChatRoom() {
     },
   ])
   const [newMessage, setNewMessage] = useState('')
+  const [showEndChatModal, setShowEndChatModal] = useState(false)
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
 
@@ -108,9 +109,16 @@ function ChatRoom() {
   }
 
   const handleEndChat = () => {
-    if (window.confirm('Are you sure you want to end this chat?')) {
-      window.location.href = '/app'
-    }
+    setShowEndChatModal(true)
+  }
+
+  const confirmEndChat = () => {
+    setShowEndChatModal(false)
+    window.location.href = '/app'
+  }
+
+  const cancelEndChat = () => {
+    setShowEndChatModal(false)
   }
 
   const StatusIcon = ({ status }) => {
@@ -157,7 +165,7 @@ function ChatRoom() {
             </p>
           </div>
           <Button 
-            variant="outline" 
+            variant="danger-outline" 
             size="sm"
             icon={LogOut}
             onClick={handleEndChat}
@@ -225,6 +233,53 @@ function ChatRoom() {
           </form>
         </div>
       </div>
+
+      {/* End Chat Modal */}
+      {showEndChatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={cancelEndChat}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <button
+              onClick={cancelEndChat}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <LogOut size={28} className="text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary mb-2">
+                End Chat?
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to end this chat? You can always start a new conversation with Mark later.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelEndChat}
+                  className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmEndChat}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+                >
+                  End Chat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

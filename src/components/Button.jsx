@@ -17,6 +17,7 @@ function Button({
     secondary: 'bg-secondary hover:bg-gray-800 text-white border-2 border-secondary',
     success: 'bg-green-500 hover:bg-green-600 text-white border-2 border-green-500',
     danger: 'bg-red-500 hover:bg-red-600 text-white border-2 border-red-500',
+    'danger-outline': 'border-2 border-red-600 text-red-600 hover:bg-red-50 hover:border-red-700 hover:text-red-700 transition-colors bg-transparent',
     warning: 'bg-yellow-500 hover:bg-yellow-600 text-white border-2 border-yellow-500',
     outline: 'border-2 border-secondary text-secondary hover:bg-secondary hover:text-white transition-all bg-transparent',
     ghost: 'hover:bg-gray-100 text-secondary border-2 border-transparent',
