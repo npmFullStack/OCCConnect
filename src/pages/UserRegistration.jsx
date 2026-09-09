@@ -1,7 +1,8 @@
 // pages/UserRegistration.jsx
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Check } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { User, Check, Lock, Eye, EyeOff } from 'lucide-react'
+import AuthLayout from '../layout/AuthLayout'
 import Button from '../components/Button'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
@@ -10,7 +11,10 @@ import avatar3 from '../assets/avatars/avatar3.png'
 function UserRegistration() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [selectedAvatar, setSelectedAvatar] = useState(null)
+  const [selectedCourse, setSelectedCourse] = useState('')
   const [error, setError] = useState('')
 
   const avatars = [
@@ -19,9 +23,18 @@ function UserRegistration() {
     { id: 3, src: avatar3, label: 'Avatar 3' },
   ]
 
+  const courses = [
+    { value: 'BSIT', label: 'Bachelor of Science in Information Technology' },
+    { value: 'BSBA', label: 'Bachelor of Science in Business Administration' },
+    { value: 'FM', label: 'Financial Management' },
+    { value: 'MM', label: 'Marketing Management' },
+    { value: 'BEED', label: 'Bachelor of Elementary Education' },
+    { value: 'BSED', label: 'Bachelor of Secondary Education' },
+    { value: 'not-disclose', label: 'Prefer not to disclose' },
+  ]
+
   const handleUsernameChange = (e) => {
     const value = e.target.value
-    // Only allow letters, numbers, and max 20 characters
     const filtered = value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)
     setUsername(filtered)
     setError('')
@@ -40,137 +53,190 @@ function UserRegistration() {
       return
     }
 
+    if (!password.trim()) {
+      setError('Please enter a password')
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+
     if (!selectedAvatar) {
       setError('Please select an avatar')
       return
     }
 
-    // Save user data to localStorage or context
+    if (!selectedCourse) {
+      setError('Please select your course')
+      return
+    }
+
+    // Save user data to localStorage
     const userData = {
       username: username.trim(),
+      password: password, // In production, this should be hashed
       avatar: selectedAvatar,
+      course: selectedCourse,
       joinedAt: new Date().toISOString()
     }
     localStorage.setItem('user', JSON.stringify(userData))
     
-    // Navigate to app
     navigate('/app')
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#f8fafc] relative flex items-center justify-center p-4">
-      {/* Background Grid */}
-      <div
-        className="absolute inset-0 z-0"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, #e2e8f0 1px, transparent 1px),
-            linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)
-          `,
-          backgroundSize: "20px 30px",
-          WebkitMaskImage:
-            "radial-gradient(ellipse 70% 60% at 50% 0%, #000 60%, transparent 100%)",
-          maskImage:
-            "radial-gradient(ellipse 70% 60% at 50% 0%, #000 60%, transparent 100%)",
-        }}
-      />
-
-      {/* Main Card - Transparent (no background color) */}
-      <div className="relative z-10 bg-transparent rounded-3xl p-8 max-w-md w-full">
-        {/* Back Button */}
-        <button
-          onClick={() => navigate('/')}
-          className="absolute top-4 left-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          <ArrowLeft size={24} className="text-secondary" />
-        </button>
-
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-secondary">Welcome!</h2>
-          <p className="text-gray-600 mt-2">Set up your profile to get started</p>
+    <AuthLayout title="Create Account">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Username Input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Username
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <User size={20} className="text-gray-400" />
+            </div>
+            <input
+              type="text"
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="Enter username (letters & numbers only)"
+              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
+              maxLength={20}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-xs text-gray-500">
+              Letters and numbers only
+            </span>
+            <span className="text-xs text-gray-500">
+              {username.length}/20
+            </span>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Username Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Username
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User size={20} className="text-gray-400" />
-              </div>
-              <input
-                type="text"
-                value={username}
-                onChange={handleUsernameChange}
-                placeholder="Enter username (letters & numbers only)"
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-2xl focus:border-primary focus:outline-none transition-colors bg-white/90 backdrop-blur-sm"
-                maxLength={20}
-              />
+        {/* Password Input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Password
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Lock size={20} className="text-gray-400" />
             </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-gray-500">
-                Letters and numbers only
-              </span>
-              <span className="text-xs text-gray-500">
-                {username.length}/20
-              </span>
-            </div>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setError('')
+              }}
+              placeholder="Enter password (min 6 characters)"
+              className="w-full pl-10 pr-12 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
+              minLength={6}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center"
+            >
+              {showPassword ? (
+                <EyeOff size={20} className="text-gray-400 hover:text-gray-600" />
+              ) : (
+                <Eye size={20} className="text-gray-400 hover:text-gray-600" />
+              )}
+            </button>
           </div>
-
-          {/* Avatar Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Choose your avatar
-            </label>
-            <div className="grid grid-cols-3 gap-4">
-              {avatars.map((avatar) => (
-                <button
-                  key={avatar.id}
-                  type="button"
-                  onClick={() => setSelectedAvatar(avatar.id)}
-                  className={`
-                    relative aspect-square rounded-2xl border-4 transition-all hover:scale-105 bg-white/90 backdrop-blur-sm
-                    ${selectedAvatar === avatar.id 
-                      ? 'border-primary shadow-lg shadow-primary/20' 
-                      : 'border-gray-200 hover:border-gray-300'}
-                  `}
-                >
-                  <img
-                    src={avatar.src}
-                    alt={avatar.label}
-                    className="w-full h-full object-cover rounded-xl"
-                  />
-                  {selectedAvatar === avatar.id && (
-                    <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1">
-                      <Check size={16} />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
+          <div className="mt-1">
+            <span className="text-xs text-gray-500">
+              Minimum 6 characters
+            </span>
           </div>
+        </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="text-red-500 text-sm text-center bg-red-50/90 backdrop-blur-sm p-3 rounded-xl">
-              {error}
-            </div>
-          )}
+        {/* Avatar Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Choose your avatar
+          </label>
+          <div className="grid grid-cols-3 gap-3">
+            {avatars.map((avatar) => (
+              <button
+                key={avatar.id}
+                type="button"
+                onClick={() => setSelectedAvatar(avatar.id)}
+                className={`
+                  relative aspect-square rounded-xl border-4 transition-all hover:scale-105 bg-white
+                  ${selectedAvatar === avatar.id 
+                    ? 'border-primary shadow-lg shadow-primary/20' 
+                    : 'border-gray-200 hover:border-gray-300'}
+                `}
+              >
+                <img
+                  src={avatar.src}
+                  alt={avatar.label}
+                  className="w-full h-full object-cover rounded-lg"
+                />
+                {selectedAvatar === avatar.id && (
+                  <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1">
+                    <Check size={16} />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          {/* Submit Button using Button component */}
-          <Button
-            type="submit"
-            size="lg"
-            fullWidth
-            className="py-4 text-lg"
+        {/* Course Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Course
+          </label>
+          <select
+            value={selectedCourse}
+            onChange={(e) => {
+              setSelectedCourse(e.target.value)
+              setError('')
+            }}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white appearance-none"
           >
-            Let's Go!
-          </Button>
-        </form>
-      </div>
-    </div>
+            <option value="">Select your course</option>
+            {courses.map((course) => (
+              <option key={course.value} value={course.value}>
+                {course.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-xl">
+            {error}
+          </div>
+        )}
+
+        {/* Submit Button */}
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          className="py-3.5 text-lg"
+        >
+          Let's Go!
+        </Button>
+
+        {/* Login Link */}
+        <div className="text-center text-sm text-gray-600">
+          Already have an account?{' '}
+          <Link to="/login" className="text-primary font-semibold hover:underline">
+            Login
+          </Link>
+        </div>
+      </form>
+    </AuthLayout>
   )
 }
 

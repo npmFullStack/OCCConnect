@@ -30,7 +30,6 @@ function Home() {
         
         {/* Header */}
         <div className="text-center">
-          {/* OCC Connect - BIGGER FONT, BOLDER */}
           <h1 className="text-7xl font-black mb-2 tracking-tight">
             <span className="text-primary" style={{ 
               textShadow: '0 0 10px rgba(91, 141, 239, 0.3), 0 4px 8px rgba(0,0,0,0.1)',
@@ -49,9 +48,9 @@ function Home() {
           </p>
         </div>
 
-        {/* Start Chatting Button using Button component */}
+        {/* Start Chatting Button - Navigates to Login */}
         <Button
-          onClick={() => navigate('/register')}
+          onClick={() => navigate('/login')}
           icon={MessageCircle}
           size="lg"
           fullWidth
@@ -60,7 +59,7 @@ function Home() {
           Start Chatting Now
         </Button>
 
-        {/* Tags Section - SMALLER FONT SO THEY DON'T BREAK */}
+        {/* Tags Section */}
         <div className="mt-8 pt-6 border-t-2 border-primary/20">
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <span className="flex items-center gap-1 text-gray-900 text-xs font-medium">

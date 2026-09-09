@@ -1,6 +1,7 @@
 // App.jsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
+import UserLogin from './pages/UserLogin'
 import UserRegistration from './pages/UserRegistration'
 import AppLayout from './layout/AppLayout'
 import ChatRoom from './pages/ChatRoom'
@@ -12,6 +13,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<UserLogin />} />
         <Route path="/register" element={<UserRegistration />} />
         <Route path="/app" element={<AppLayout />}>
           <Route index element={<ChatRoom />} />
