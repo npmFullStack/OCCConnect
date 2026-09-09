@@ -1,0 +1,34 @@
+/* src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Cherry+Bomb+One&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased bg-bg text-secondary;
+    font-family: 'Cherry Bomb One', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-outline-primary {
+    -webkit-text-stroke: 2px #0070FF;
+    text-stroke: 2px #0070FF;
+  }
+}
+
+/* Cute floating animation for robot */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(2deg);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
