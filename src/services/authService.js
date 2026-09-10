@@ -1,7 +1,7 @@
 // src/services/authService.js
 import { supabase } from './supabaseClient'
 
-const EMAIL_DOMAIN = '@occ-chat.local'
+const EMAIL_DOMAIN = '@occ-chat.app'
 const usernameToEmail = (username) => `${username.toLowerCase().trim()}${EMAIL_DOMAIN}`
 
 export async function signUp({ username, password, avatar, course }) {

@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { MessageSquare, Users, User, LogOut, ChevronDown, Users as UsersIcon } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { authService } from '../services'
+import { authService, supabase } from '../services'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
@@ -15,15 +15,18 @@ function AppLayout() {
   const location = useLocation()
   const { user, profile, loading } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [onlineCount] = useState(34)
+  const [onlineCount, setOnlineCount] = useState(0)
   const dropdownRef = useRef(null)
+  const presenceChannelRef = useRef(null)
 
+  // Redirect if not logged in
   useEffect(() => {
     if (!loading && !user) {
       navigate('/login')
     }
   }, [user, loading, navigate])
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -34,8 +37,60 @@ function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Global online users presence (Supabase Realtime Presence)
+  useEffect(() => {
+    if (!user) return
+
+    let mounted = true
+
+    const channel = supabase.channel('online_users', {
+      config: { presence: { key: user.id } },
+    })
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        if (!mounted) return
+        const state = channel.presenceState()
+        setOnlineCount(Object.keys(state).length)
+      })
+      .on('presence', { event: 'join' }, () => {
+        if (!mounted) return
+        const state = channel.presenceState()
+        setOnlineCount(Object.keys(state).length)
+      })
+      .on('presence', { event: 'leave' }, () => {
+        if (!mounted) return
+        const state = channel.presenceState()
+        setOnlineCount(Object.keys(state).length)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            username: profile?.username || user?.user_metadata?.username || 'User',
+            online_at: new Date().toISOString(),
+          })
+        }
+      })
+
+    presenceChannelRef.current = channel
+
+    return () => {
+      mounted = false
+      if (presenceChannelRef.current) {
+        supabase.removeChannel(presenceChannelRef.current)
+        presenceChannelRef.current = null
+      }
+    }
+  }, [user, profile])
+
   const handleLogout = async () => {
     try {
+      // Untrack presence before signing out so the count updates immediately
+      if (presenceChannelRef.current) {
+        await presenceChannelRef.current.untrack()
+        supabase.removeChannel(presenceChannelRef.current)
+        presenceChannelRef.current = null
+      }
       await authService.signOut()
       navigate('/')
     } catch (err) {
@@ -85,9 +140,9 @@ function AppLayout() {
           {/* Logo */}
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-black tracking-tight">
-              <span 
-                className="text-primary" 
-                style={{ 
+              <span
+                className="text-primary"
+                style={{
                   textShadow: '0 0 10px rgba(91, 141, 239, 0.3), 0 4px 8px rgba(0,0,0,0.1)',
                   WebkitTextStroke: '2px white',
                   textStroke: '2px white',
@@ -95,9 +150,9 @@ function AppLayout() {
               >
                 OCC
               </span>
-              <span 
-                className="text-secondary text-2xl" 
-                style={{ 
+              <span
+                className="text-secondary text-2xl"
+                style={{
                   textShadow: '0 0 10px rgba(42, 59, 92, 0.3), 0 4px 8px rgba(0,0,0,0.1)',
                   WebkitTextStroke: '2px white',
                   textStroke: '2px white',
@@ -120,9 +175,9 @@ function AppLayout() {
                   alt={displayName}
                   className="w-9 h-9 rounded-full object-cover border-2 border-primary"
                 />
-                <ChevronDown 
-                  size={18} 
-                  className={`text-gray-600 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} 
+                <ChevronDown
+                  size={18}
+                  className={`text-gray-600 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
                 />
               </button>
 
@@ -152,7 +207,9 @@ function AppLayout() {
           <div className="flex items-center gap-1.5 text-xs">
             <UsersIcon size={14} className="text-primary" />
             <span className="font-semibold text-secondary">{onlineCount}</span>
-            <span className="text-gray-500">Online</span>
+            <span className="text-gray-500">
+              {onlineCount === 1 ? 'User Online' : 'Users Online'}
+            </span>
             <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
           </div>
         </div>
@@ -176,8 +233,8 @@ function AppLayout() {
                   onClick={() => navigate(item.path)}
                   className={`
                     flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all
-                    ${isActive 
-                      ? 'text-primary' 
+                    ${isActive
+                      ? 'text-primary'
                       : 'text-gray-500 hover:text-secondary'}
                   `}
                 >
