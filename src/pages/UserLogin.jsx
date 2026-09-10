@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { User, Lock, Eye, EyeOff } from 'lucide-react'
 import AuthLayout from '../layout/AuthLayout'
 import Button from '../components/Button'
+import { authService } from '../services'
 
 function UserLogin() {
   const navigate = useNavigate()
@@ -11,6 +12,7 @@ function UserLogin() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleUsernameChange = (e) => {
     const value = e.target.value
@@ -19,14 +21,14 @@ function UserLogin() {
     setError('')
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!username.trim()) {
       setError('Please enter your username')
       return
     }
-    
+
     if (username.length < 2) {
       setError('Username must be at least 2 characters')
       return
@@ -42,33 +44,22 @@ function UserLogin() {
       return
     }
 
-    // Check if user exists in localStorage
-    const storedUser = localStorage.getItem('user')
-    if (storedUser) {
-      const userData = JSON.parse(storedUser)
-      // For demo, we'll accept any password if username matches
-      if (userData.username.toLowerCase() === username.toLowerCase()) {
-        // Update user data with login timestamp
-        const updatedUser = {
-          ...userData,
-          lastLogin: new Date().toISOString()
-        }
-        localStorage.setItem('user', JSON.stringify(updatedUser))
-        navigate('/app')
-        return
-      }
-    }
+    setLoading(true)
+    setError('')
 
-    // If no matching user found, create one (for demo purposes)
-    const newUser = {
-      username: username.trim(),
-      avatar: 1,
-      joinedAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-      course: 'Not specified'
+    try {
+      await authService.signIn({ username: username.trim(), password })
+      navigate('/app')
+    } catch (err) {
+      console.error('Login error:', err)
+      if (err.message?.includes('Invalid login credentials')) {
+        setError('Invalid username or password')
+      } else {
+        setError(err.message || 'Failed to login. Please try again.')
+      }
+    } finally {
+      setLoading(false)
     }
-    localStorage.setItem('user', JSON.stringify(newUser))
-    navigate('/app')
   }
 
   return (
@@ -90,6 +81,7 @@ function UserLogin() {
               placeholder="Enter your username"
               className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
               maxLength={20}
+              disabled={loading}
             />
           </div>
         </div>
@@ -113,6 +105,7 @@ function UserLogin() {
               placeholder="Enter your password"
               className="w-full pl-10 pr-12 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
               minLength={6}
+              disabled={loading}
             />
             <button
               type="button"
@@ -140,9 +133,10 @@ function UserLogin() {
           type="submit"
           size="lg"
           fullWidth
+          disabled={loading}
           className="py-3.5 text-lg"
         >
-          Login
+          {loading ? 'Logging in...' : 'Login'}
         </Button>
 
         {/* Sign Up Link */}

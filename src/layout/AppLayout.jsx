@@ -2,25 +2,27 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { MessageSquare, Users, User, LogOut, ChevronDown, Users as UsersIcon } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { authService } from '../services'
 import avatar1 from '../assets/avatars/avatar1.png'
+import avatar2 from '../assets/avatars/avatar2.png'
+import avatar3 from '../assets/avatars/avatar3.png'
+
+const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3 }
 
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [user, setUser] = useState(null)
+  const { user, profile, loading } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [onlineCount] = useState(34)
   const dropdownRef = useRef(null)
 
   useEffect(() => {
-    // Check if user is logged in
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      navigate('/register')
-      return
+    if (!loading && !user) {
+      navigate('/login')
     }
-    setUser(JSON.parse(userData))
-  }, [navigate])
+  }, [user, loading, navigate])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -32,9 +34,13 @@ function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem('user')
-    navigate('/')
+  const handleLogout = async () => {
+    try {
+      await authService.signOut()
+      navigate('/')
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
   }
 
   const navItems = [
@@ -42,6 +48,18 @@ function AppLayout() {
     { path: '/app/connect-wall', label: 'ConnectWall', icon: Users },
     { path: '/app/profile', label: 'Profile', icon: User },
   ]
+
+  const displayName = profile?.username || user?.user_metadata?.username || 'User'
+  const avatarId = profile?.avatar || user?.user_metadata?.avatar || 1
+  const avatarSrc = avatarMap[avatarId] || avatar1
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
+        <div className="text-gray-500">Loading…</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] relative">
@@ -98,8 +116,8 @@ function AppLayout() {
                 className="flex items-center gap-2 hover:bg-gray-100 rounded-full px-3 py-1.5 transition-colors"
               >
                 <img
-                  src={avatar1}
-                  alt={user.username}
+                  src={avatarSrc}
+                  alt={displayName}
                   className="w-9 h-9 rounded-full object-cover border-2 border-primary"
                 />
                 <ChevronDown 
@@ -112,7 +130,7 @@ function AppLayout() {
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 overflow-hidden">
                   <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-sm font-medium text-secondary">{user.username}</p>
+                    <p className="text-sm font-medium text-secondary">{displayName}</p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -140,7 +158,7 @@ function AppLayout() {
         </div>
       </div>
 
-      {/* Main Content - with padding for fixed header and online counter */}
+      {/* Main Content */}
       <main className="relative z-10 max-w-4xl mx-auto px-4 pt-[110px] pb-24">
         <Outlet />
       </main>

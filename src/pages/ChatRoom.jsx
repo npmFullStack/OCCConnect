@@ -1,15 +1,21 @@
 // pages/ChatRoom.jsx
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Check, CheckCheck, LogOut, X, Users, Loader2, Clock, UserPlus, MoreVertical, RefreshCw } from 'lucide-react'
 import Button from '../components/Button'
+import { useAuth } from '../hooks/useAuth'
+import { chatService, presenceService } from '../services'
+import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
-import avatar1 from '../assets/avatars/avatar1.png'
+
+const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3 }
 
 function ChatRoom() {
+  const { user, profile } = useAuth()
   const [isMatched, setIsMatched] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [searchTime, setSearchTime] = useState(0)
+  const [conversationId, setConversationId] = useState(null)
   const [partnerName, setPartnerName] = useState('')
   const [partnerAvatar, setPartnerAvatar] = useState(null)
   const [partnerCourse, setPartnerCourse] = useState('')
@@ -18,14 +24,14 @@ function ChatRoom() {
   const [showEndChatModal, setShowEndChatModal] = useState(false)
   const [showNewPartnerModal, setShowNewPartnerModal] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
   const searchIntervalRef = useRef(null)
+  const matchPollRef = useRef(null)
   const dropdownRef = useRef(null)
-
-  const avatars = [avatar1, avatar2, avatar3]
-  const partnerNames = ['Alex', 'Jamie', 'Taylor', 'Jordan', 'Morgan', 'Casey', 'Riley', 'Avery']
-  const partnerCourses = ['BSIT', 'BSBA-FM', 'BSBA-MM', 'BEED', 'BSED']
+  const presenceChannelRef = useRef(null)
+  const typingTimeoutRef = useRef(null)
 
   const getCourseColor = (course) => {
     if (course === 'BSIT') return 'bg-red-500'
@@ -38,13 +44,50 @@ function ChatRoom() {
     scrollToBottom()
   }, [messages])
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (searchIntervalRef.current) {
-        clearInterval(searchIntervalRef.current)
+      if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
+      if (matchPollRef.current) clearInterval(matchPollRef.current)
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      if (presenceChannelRef.current) {
+        presenceService.broadcastTyping(presenceChannelRef.current, user?.id, profile?.username, false)
+        presenceChannelRef.current.unsubscribe()
       }
+      chatService.leaveMatchQueue()
     }
   }, [])
+
+  // Subscribe to messages when matched
+  useEffect(() => {
+    if (!conversationId) return
+
+    const unsubscribe = chatService.subscribeToMessages(conversationId, (payload) => {
+      const msg = payload.new
+      if (!msg) return
+
+      // Skip our own messages (we already added them optimistically)
+      if (msg.sender_id === user?.id) return
+
+      setMessages((prev) => {
+        // Check if message already exists
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [
+          ...prev,
+          {
+            id: msg.id,
+            user: partnerName,
+            text: msg.text,
+            time: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isMine: false,
+            status: msg.status || 'delivered',
+          },
+        ]
+      })
+    })
+
+    return unsubscribe
+  }, [conversationId, user?.id, partnerName])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -63,99 +106,127 @@ function ChatRoom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const startMatching = () => {
+  const startMatching = async () => {
+    if (!profile) return
+
     setIsSearching(true)
     setSearchTime(0)
 
     searchIntervalRef.current = setInterval(() => {
-      setSearchTime(prev => prev + 1)
+      setSearchTime((prev) => prev + 1)
     }, 1000)
 
-    const matchDelay = Math.floor(Math.random() * 3000) + 2000
-    setTimeout(() => {
-      if (searchIntervalRef.current) {
-        clearInterval(searchIntervalRef.current)
-      }
+    try {
+      // Join match queue
+      await chatService.joinMatchQueue({
+        course: profile.course,
+        avatar: profile.avatar,
+        username: profile.username,
+      })
 
-      const randomName = partnerNames[Math.floor(Math.random() * partnerNames.length)]
-      const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)]
-      const randomCourse = partnerCourses[Math.floor(Math.random() * partnerCourses.length)]
+      // Poll for a match
+      matchPollRef.current = setInterval(async () => {
+        try {
+          const match = await chatService.tryFindMatch()
+          if (match) {
+            clearInterval(matchPollRef.current)
+            clearInterval(searchIntervalRef.current)
+            setIsSearching(false)
+            setIsMatched(true)
+            setConversationId(match.conversation_id || match.id)
+            setPartnerName(match.partner_username || match.username || 'Partner')
+            setPartnerAvatar(match.partner_avatar || match.avatar || 1)
+            setPartnerCourse(match.partner_course || match.course || '')
 
-      setPartnerName(randomName)
-      setPartnerAvatar(randomAvatar)
-      setPartnerCourse(randomCourse)
-      setIsMatched(true)
-      setIsSearching(false)
+            // Load existing messages
+            const existing = await chatService.getMessages(match.conversation_id || match.id)
+            setMessages(
+              existing.map((m) => ({
+                id: m.id,
+                user: m.sender_id === user?.id ? 'You' : (match.partner_username || 'Partner'),
+                text: m.text,
+                time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                isMine: m.sender_id === user?.id,
+                status: m.status || 'sent',
+              }))
+            )
 
-      setMessages([
-        {
-          id: 1,
-          user: randomName,
-          text: `Hey there! I'm ${randomName}. Nice to meet you!`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isMine: false,
-          status: 'seen'
-        },
-        {
-          id: 2,
-          user: 'You',
-          text: `Hi ${randomName}! Great to meet you too!`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isMine: true,
-          status: 'seen'
+            // Set up presence channel
+            presenceChannelRef.current = presenceService.createPresenceChannel(
+              match.conversation_id || match.id,
+              { userId: user?.id, username: profile.username },
+              {
+                onTyping: (payload) => {
+                  if (payload.userId !== user?.id) {
+                    setIsPartnerTyping(payload.isTyping)
+                  }
+                },
+              }
+            )
+          }
+        } catch (err) {
+          console.error('Match poll error:', err)
         }
-      ])
-    }, matchDelay)
+      }, 2000)
+    } catch (err) {
+      console.error('Match queue error:', err)
+      setIsSearching(false)
+      if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
+    }
   }
 
-  const handleSend = (e) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !isMatched) return
+  const handleTyping = (value) => {
+    setNewMessage(value)
 
-    const newMsg = {
-      id: messages.length + 1,
-      user: 'You',
-      text: newMessage.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isMine: true,
-      status: 'sent'
+    if (presenceChannelRef.current && user) {
+      presenceService.broadcastTyping(presenceChannelRef.current, user.id, profile?.username, true)
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = setTimeout(() => {
+        if (presenceChannelRef.current && user) {
+          presenceService.broadcastTyping(presenceChannelRef.current, user.id, profile?.username, false)
+        }
+      }, 1500)
     }
+  }
 
-    setMessages(prev => [...prev, newMsg])
+  const handleSend = async (e) => {
+    e.preventDefault()
+    if (!newMessage.trim() || !isMatched || !conversationId) return
+
+    const text = newMessage.trim()
     setNewMessage('')
 
-    setTimeout(() => {
-      const replies = [
-        "That's really interesting. Tell me more about that.",
-        "I totally agree with you on that!",
-        "Oh wow, I didn't know that. Thanks for sharing!",
-        "That sounds awesome. What else?",
-        "I feel the same way about that topic.",
-        "That's a great point you made!",
-        "Hmm, I never thought about it that way before.",
-        "That's cool! Tell me more about your experience.",
-        "I've been thinking about that too.",
-        "That makes a lot of sense actually."
-      ]
-      setMessages(prev => [...prev, {
-        id: prev.length + 1,
-        user: partnerName,
-        text: replies[Math.floor(Math.random() * replies.length)],
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isMine: false,
-        status: 'delivered'
-      }])
-      setTimeout(() => {
-        setMessages(prev => {
-          const updated = [...prev]
-          const lastIndex = updated.length - 1
-          if (updated[lastIndex] && !updated[lastIndex].isMine) {
-            updated[lastIndex].status = 'seen'
-          }
-          return updated
-        })
-      }, 800)
-    }, 1200 + Math.random() * 1000)
+    // Optimistic update
+    const tempId = `temp-${Date.now()}`
+    const newMsg = {
+      id: tempId,
+      user: 'You',
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isMine: true,
+      status: 'sent',
+    }
+    setMessages((prev) => [...prev, newMsg])
+
+    try {
+      const sent = await chatService.sendMessage({ conversationId, text })
+      // Replace temp message with real one
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, id: sent.id, status: 'sent' } : m))
+      )
+
+      // Broadcast typing stopped
+      if (presenceChannelRef.current && user) {
+        presenceService.broadcastTyping(presenceChannelRef.current, user.id, profile?.username, false)
+      }
+    } catch (err) {
+      console.error('Send message error:', err)
+      // Mark as failed
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
+      )
+    }
   }
 
   const handleEndChat = () => {
@@ -163,54 +234,72 @@ function ChatRoom() {
     setShowEndChatModal(true)
   }
 
-  const confirmEndChat = () => {
+  const confirmEndChat = async () => {
     setShowEndChatModal(false)
-    setIsMatched(false)
-    setPartnerName('')
-    setPartnerAvatar(null)
-    setPartnerCourse('')
-    setMessages([])
-    if (searchIntervalRef.current) {
-      clearInterval(searchIntervalRef.current)
+    if (conversationId) {
+      try {
+        await chatService.endConversation(conversationId)
+      } catch (err) {
+        console.error('End conversation error:', err)
+      }
     }
+    if (presenceChannelRef.current) {
+      presenceChannelRef.current.unsubscribe()
+      presenceChannelRef.current = null
+    }
+    resetChat()
   }
 
-  const cancelEndChat = () => {
-    setShowEndChatModal(false)
-  }
+  const cancelEndChat = () => setShowEndChatModal(false)
 
   const handleNewPartner = () => {
     setShowDropdown(false)
     setShowNewPartnerModal(true)
   }
 
-  const confirmNewPartner = () => {
+  const confirmNewPartner = async () => {
     setShowNewPartnerModal(false)
+    if (conversationId) {
+      try {
+        await chatService.endConversation(conversationId)
+      } catch (err) {
+        console.error('End conversation error:', err)
+      }
+    }
+    if (presenceChannelRef.current) {
+      presenceChannelRef.current.unsubscribe()
+      presenceChannelRef.current = null
+    }
+    resetChat()
+    startMatching()
+  }
+
+  const cancelNewPartner = () => setShowNewPartnerModal(false)
+
+  const resetChat = () => {
     setIsMatched(false)
+    setConversationId(null)
     setPartnerName('')
     setPartnerAvatar(null)
     setPartnerCourse('')
     setMessages([])
-    startMatching()
-  }
-
-  const cancelNewPartner = () => {
-    setShowNewPartnerModal(false)
+    setIsPartnerTyping(false)
+    if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
+    if (matchPollRef.current) clearInterval(matchPollRef.current)
   }
 
   const StatusIcon = ({ status }) => {
     if (status === 'sent') return <Check size={14} className="text-gray-400" />
     if (status === 'delivered') return <CheckCheck size={14} className="text-gray-400" />
     if (status === 'seen') return <CheckCheck size={14} className="text-blue-500" />
+    if (status === 'failed') return <span className="text-red-400 text-[10px]">Failed</span>
     return null
   }
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    if (mins > 0) {
-      return `${mins}m ${secs}s`
-    }
+    if (mins > 0) return `${mins}m ${secs}s`
     return `${secs}s`
   }
 
@@ -287,10 +376,10 @@ function ChatRoom() {
                 <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
               </div>
               <button
-                onClick={() => {
-                  if (searchIntervalRef.current) {
-                    clearInterval(searchIntervalRef.current)
-                  }
+                onClick={async () => {
+                  if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
+                  if (matchPollRef.current) clearInterval(matchPollRef.current)
+                  await chatService.leaveMatchQueue()
                   setIsSearching(false)
                 }}
                 className="mt-6 text-sm text-gray-500 hover:text-gray-700 underline transition-colors"
@@ -304,7 +393,7 @@ function ChatRoom() {
             {/* Chat Header */}
             <div className="relative z-20 flex items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-4 flex-shrink-0">
               <img
-                src={partnerAvatar}
+                src={avatarMap[partnerAvatar] || avatar1}
                 alt={partnerName}
                 className="w-10 h-10 rounded-full object-cover border-2 border-primary flex-shrink-0"
               />
@@ -321,14 +410,14 @@ function ChatRoom() {
                 </div>
                 <p className="text-xs text-green-500 flex items-center gap-1">
                   <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
-                  Online
+                  {isPartnerTyping ? 'Typing...' : 'Online'}
                 </p>
               </div>
 
               {/* Dropdown Menu */}
               <div className="relative flex-shrink-0" ref={dropdownRef}>
                 <button
-                  onClick={() => setShowDropdown(prev => !prev)}
+                  onClick={() => setShowDropdown((prev) => !prev)}
                   className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-secondary hover:bg-gray-100 transition-colors"
                   aria-label="Chat options"
                 >
@@ -368,7 +457,7 @@ function ChatRoom() {
                 >
                   {!msg.isMine && (
                     <img
-                      src={partnerAvatar}
+                      src={avatarMap[partnerAvatar] || avatar1}
                       alt={partnerName}
                       className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                     />
@@ -400,7 +489,7 @@ function ChatRoom() {
                   <input
                     type="text"
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => handleTyping(e.target.value)}
                     placeholder={`Message ${partnerName}...`}
                     className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-2xl focus:border-primary focus:outline-none transition-colors text-secondary bg-white"
                   />
@@ -424,7 +513,6 @@ function ChatRoom() {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={cancelNewPartner}
           />
-
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
             <button
               onClick={cancelNewPartner}
@@ -432,14 +520,11 @@ function ChatRoom() {
             >
               <X size={20} />
             </button>
-
             <div className="text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <UserPlus size={28} className="text-primary" />
               </div>
-              <h3 className="text-xl font-bold text-secondary mb-2">
-                Find New Partner?
-              </h3>
+              <h3 className="text-xl font-bold text-secondary mb-2">Find New Partner?</h3>
               <p className="text-gray-600 mb-6">
                 Are you sure you want to leave this conversation with {partnerName} and find a new partner?
               </p>
@@ -469,7 +554,6 @@ function ChatRoom() {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={cancelEndChat}
           />
-
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
             <button
               onClick={cancelEndChat}
@@ -477,14 +561,11 @@ function ChatRoom() {
             >
               <X size={20} />
             </button>
-
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <LogOut size={28} className="text-red-600" />
               </div>
-              <h3 className="text-xl font-bold text-secondary mb-2">
-                End Chat?
-              </h3>
+              <h3 className="text-xl font-bold text-secondary mb-2">End Chat?</h3>
               <p className="text-gray-600 mb-6">
                 Are you sure you want to end this conversation with {partnerName}?
               </p>

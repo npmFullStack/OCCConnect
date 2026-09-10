@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { User, Check, Lock, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react'
 import AuthLayout from '../layout/AuthLayout'
 import Button from '../components/Button'
+import { authService, profileService } from '../services'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
@@ -19,6 +20,7 @@ function UserRegistration() {
   const [selectedAvatar, setSelectedAvatar] = useState(null)
   const [selectedCourse, setSelectedCourse] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
 
@@ -83,7 +85,7 @@ function UserRegistration() {
     setError('')
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
     if (!username.trim()) {
@@ -116,16 +118,33 @@ function UserRegistration() {
       return
     }
 
-    const userData = {
-      username: username.trim(),
-      password: password,
-      avatar: selectedAvatar,
-      course: selectedCourse,
-      joinedAt: new Date().toISOString()
-    }
-    localStorage.setItem('user', JSON.stringify(userData))
+    setLoading(true)
+    setError('')
 
-    navigate('/app')
+    try {
+      // Check if username is already taken
+      const taken = await profileService.isUsernameTaken(username.trim())
+      if (taken) {
+        setError('Username is already taken. Please choose another.')
+        setLoading(false)
+        return
+      }
+
+      // Sign up with Supabase
+      await authService.signUp({
+        username: username.trim(),
+        password,
+        avatar: selectedAvatar,
+        course: selectedCourse,
+      })
+
+      navigate('/app')
+    } catch (err) {
+      console.error('Signup error:', err)
+      setError(err.message || 'Failed to create account. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -147,6 +166,7 @@ function UserRegistration() {
               placeholder="Enter username (letters & numbers only)"
               className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white font-normal"
               maxLength={20}
+              disabled={loading}
             />
           </div>
           <div className="flex justify-between mt-1">
@@ -178,6 +198,7 @@ function UserRegistration() {
               placeholder="Enter password (min 6 characters)"
               className="w-full pl-10 pr-12 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
               minLength={6}
+              disabled={loading}
             />
             <button
               type="button"
@@ -210,6 +231,7 @@ function UserRegistration() {
               setError('')
             }}
             className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white appearance-none"
+            disabled={loading}
           >
             <option value="">Select your course</option>
             {courses.map((course) => (
@@ -233,7 +255,6 @@ function UserRegistration() {
             Choose your avatar
           </label>
           <div className="relative">
-            {/* Left Arrow */}
             {canScrollLeft && (
               <button
                 type="button"
@@ -244,7 +265,6 @@ function UserRegistration() {
                 <ChevronLeft size={20} className="text-secondary" />
               </button>
             )}
-            {/* Right Arrow */}
             {canScrollRight && (
               <button
                 type="button"
@@ -255,11 +275,9 @@ function UserRegistration() {
                 <ChevronRight size={20} className="text-secondary" />
               </button>
             )}
-            {/* Left fade */}
             {canScrollLeft && (
               <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none rounded-l-xl" />
             )}
-            {/* Right fade */}
             {canScrollRight && (
               <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none rounded-r-xl" />
             )}
@@ -274,6 +292,7 @@ function UserRegistration() {
                   key={avatar.id}
                   type="button"
                   onClick={() => setSelectedAvatar(avatar.id)}
+                  disabled={loading}
                   className={`
                     relative flex-shrink-0 w-20 h-20 rounded-xl border-4 transition-all hover:scale-105 bg-white
                     ${selectedAvatar === avatar.id
@@ -304,14 +323,15 @@ function UserRegistration() {
           </div>
         )}
 
-        {/* Submit Button - with reduced opacity */}
+        {/* Submit Button */}
         <Button
           type="submit"
           size="lg"
           fullWidth
+          disabled={loading}
           className="py-3.5 text-lg opacity-90 hover:opacity-100 transition-opacity"
         >
-          Let's Go!
+          {loading ? 'Creating Account...' : "Let's Go!"}
         </Button>
 
         {/* Login Link */}

@@ -1,15 +1,22 @@
 // pages/Profile.jsx
 import React, { useState, useEffect } from 'react'
 import { User, Calendar, Edit, Camera, X, Check, GraduationCap } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
 
+const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3 }
+
 function Profile() {
-  const [user, setUser] = useState(null)
+  const { user, profile, loading } = useAuth()
+  const { updateProfile, saving } = useProfile()
+
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [showUsernameModal, setShowUsernameModal] = useState(false)
   const [showCourseModal, setShowCourseModal] = useState(false)
+  const [error, setError] = useState('')
 
   // Modal temp states
   const [tempUsername, setTempUsername] = useState('')
@@ -20,9 +27,6 @@ function Profile() {
     { id: 1, src: avatar1, label: 'Avatar 1' },
     { id: 2, src: avatar2, label: 'Avatar 2' },
     { id: 3, src: avatar3, label: 'Avatar 3' },
-    { id: 4, src: avatar1, label: 'Avatar 4' },
-    { id: 5, src: avatar2, label: 'Avatar 5' },
-    { id: 6, src: avatar3, label: 'Avatar 6' },
   ]
 
   const courses = [
@@ -35,26 +39,14 @@ function Profile() {
   ]
 
   useEffect(() => {
-    const userData = localStorage.getItem('user')
-    if (userData) {
-      const parsed = JSON.parse(userData)
-      setUser(parsed)
-      setTempUsername(parsed.username)
-      setTempAvatar(parsed.avatar)
-      setTempCourse(parsed.course || '')
+    if (profile) {
+      setTempUsername(profile.username || '')
+      setTempAvatar(profile.avatar || 1)
+      setTempCourse(profile.course || '')
     }
-  }, [])
+  }, [profile])
 
-  const updateUser = (updates) => {
-    const updatedUser = { ...user, ...updates }
-    localStorage.setItem('user', JSON.stringify(updatedUser))
-    setUser(updatedUser)
-  }
-
-  const getAvatarSrc = (avatarId) => {
-    const found = avatars.find(a => a.id === avatarId)
-    return found ? found.src : avatar1
-  }
+  const getAvatarSrc = (avatarId) => avatarMap[avatarId] || avatar1
 
   const getCourseColor = (courseValue) => {
     const course = courses.find(c => c.value === courseValue)
@@ -68,20 +60,26 @@ function Profile() {
 
   // ----- Avatar Modal -----
   const openAvatarModal = () => {
-    setTempAvatar(user.avatar)
+    setTempAvatar(profile?.avatar || 1)
     setShowAvatarModal(true)
+    setError('')
   }
 
-  const saveAvatar = () => {
+  const saveAvatar = async () => {
     if (!tempAvatar) return
-    updateUser({ avatar: tempAvatar })
-    setShowAvatarModal(false)
+    try {
+      await updateProfile({ avatar: tempAvatar })
+      setShowAvatarModal(false)
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   // ----- Username Modal -----
   const openUsernameModal = () => {
-    setTempUsername(user.username)
+    setTempUsername(profile?.username || '')
     setShowUsernameModal(true)
+    setError('')
   }
 
   const handleUsernameChange = (e) => {
@@ -89,25 +87,34 @@ function Profile() {
     setTempUsername(filtered)
   }
 
-  const saveUsername = () => {
+  const saveUsername = async () => {
     if (!tempUsername.trim() || tempUsername.length < 2) return
-    updateUser({ username: tempUsername.trim() })
-    setShowUsernameModal(false)
+    try {
+      await updateProfile({ username: tempUsername.trim() })
+      setShowUsernameModal(false)
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   // ----- Course Modal -----
   const openCourseModal = () => {
-    setTempCourse(user.course || '')
+    setTempCourse(profile?.course || '')
     setShowCourseModal(true)
+    setError('')
   }
 
-  const saveCourse = () => {
+  const saveCourse = async () => {
     if (!tempCourse) return
-    updateUser({ course: tempCourse })
-    setShowCourseModal(false)
+    try {
+      await updateProfile({ course: tempCourse })
+      setShowCourseModal(false)
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
-  if (!user) {
+  if (loading || !profile) {
     return (
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-xl text-center">
         <p className="text-gray-500">Loading profile...</p>
@@ -128,8 +135,8 @@ function Profile() {
               aria-label="Change avatar"
             >
               <img
-                src={getAvatarSrc(user.avatar)}
-                alt={user.username}
+                src={getAvatarSrc(profile.avatar)}
+                alt={profile.username}
                 className="w-full h-full object-cover"
               />
             </button>
@@ -145,7 +152,7 @@ function Profile() {
 
           {/* Username */}
           <div className="mt-4 flex items-center gap-2 justify-center">
-            <h2 className="text-2xl font-bold text-secondary">{user.username}</h2>
+            <h2 className="text-2xl font-bold text-secondary">{profile.username}</h2>
             <button
               type="button"
               onClick={openUsernameModal}
@@ -158,11 +165,11 @@ function Profile() {
 
           {/* Course */}
           <div className="mt-3 flex items-center gap-2 justify-center">
-            {user.course ? (
+            {profile.course ? (
               <span
-                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold text-white ${getCourseColor(user.course)}`}
+                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold text-white ${getCourseColor(profile.course)}`}
               >
-                {getCourseLabel(user.course)}
+                {getCourseLabel(profile.course)}
               </span>
             ) : (
               <span className="text-sm text-gray-400 italic">No course set</span>
@@ -185,7 +192,7 @@ function Profile() {
             </div>
             <div className="flex items-center justify-center gap-2 text-gray-600">
               <Calendar size={18} />
-              <span>Joined {new Date(user.joinedAt).toLocaleDateString()}</span>
+              <span>Joined {new Date(profile.created_at || Date.now()).toLocaleDateString()}</span>
             </div>
           </div>
 
@@ -258,19 +265,26 @@ function Profile() {
               ))}
             </div>
 
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-xl mb-3">
+                {error}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowAvatarModal(false)}
+                disabled={saving}
                 className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveAvatar}
-                disabled={!tempAvatar}
+                disabled={!tempAvatar || saving}
                 className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
@@ -327,19 +341,26 @@ function Profile() {
               )}
             </div>
 
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-xl mb-3">
+                {error}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowUsernameModal(false)}
+                disabled={saving}
                 className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveUsername}
-                disabled={!tempUsername.trim() || tempUsername.length < 2}
+                disabled={!tempUsername.trim() || tempUsername.length < 2 || saving}
                 className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
@@ -392,19 +413,26 @@ function Profile() {
               ))}
             </div>
 
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-xl mb-3">
+                {error}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCourseModal(false)}
+                disabled={saving}
                 className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveCourse}
-                disabled={!tempCourse}
+                disabled={!tempCourse || saving}
                 className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
