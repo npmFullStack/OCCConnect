@@ -1,12 +1,15 @@
 // pages/UserRegistration.jsx
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { User, Check, Lock, Eye, EyeOff } from 'lucide-react'
+import { User, Check, Lock, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react'
 import AuthLayout from '../layout/AuthLayout'
 import Button from '../components/Button'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
+import avatar4 from '../assets/avatars/avatar1.png'
+import avatar5 from '../assets/avatars/avatar2.png'
+import avatar6 from '../assets/avatars/avatar3.png'
 
 function UserRegistration() {
   const navigate = useNavigate()
@@ -16,22 +19,62 @@ function UserRegistration() {
   const [selectedAvatar, setSelectedAvatar] = useState(null)
   const [selectedCourse, setSelectedCourse] = useState('')
   const [error, setError] = useState('')
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(true)
+
+  const scrollRef = useRef(null)
 
   const avatars = [
     { id: 1, src: avatar1, label: 'Avatar 1' },
     { id: 2, src: avatar2, label: 'Avatar 2' },
     { id: 3, src: avatar3, label: 'Avatar 3' },
+    { id: 4, src: avatar4, label: 'Avatar 4' },
+    { id: 5, src: avatar5, label: 'Avatar 5' },
+    { id: 6, src: avatar6, label: 'Avatar 6' },
   ]
 
   const courses = [
-    { value: 'BSIT', label: 'Bachelor of Science in Information Technology' },
-    { value: 'BSBA', label: 'Bachelor of Science in Business Administration' },
-    { value: 'FM', label: 'Financial Management' },
-    { value: 'MM', label: 'Marketing Management' },
-    { value: 'BEED', label: 'Bachelor of Elementary Education' },
-    { value: 'BSED', label: 'Bachelor of Secondary Education' },
-    { value: 'not-disclose', label: 'Prefer not to disclose' },
+    { value: 'BSIT', label: 'Bachelor of Science in Information Technology', color: 'bg-red-500' },
+    { value: 'BSBA-FM', label: 'Bachelor of Science in Business Administration - Financial Management', color: 'bg-yellow-500' },
+    { value: 'BSBA-MM', label: 'Bachelor of Science in Business Administration - Marketing Management', color: 'bg-yellow-500' },
+    { value: 'BEED', label: 'Bachelor of Elementary Education', color: 'bg-blue-500' },
+    { value: 'BSED', label: 'Bachelor of Secondary Education', color: 'bg-blue-500' },
+    { value: 'not-disclose', label: 'Prefer not to disclose', color: 'bg-gray-400' },
   ]
+
+  const getCourseColor = (courseValue) => {
+    const course = courses.find(c => c.value === courseValue)
+    return course ? course.color : 'bg-gray-400'
+  }
+
+  const getCourseLabel = (courseValue) => {
+    if (courseValue === 'not-disclose') return 'Prefer not to disclose'
+    return courseValue
+  }
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current
+      setCanScrollLeft(scrollLeft > 5)
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5)
+    }
+  }
+
+  useEffect(() => {
+    handleScroll()
+    window.addEventListener('resize', handleScroll)
+    return () => window.removeEventListener('resize', handleScroll)
+  }, [])
+
+  const scrollAvatars = (direction) => {
+    if (scrollRef.current) {
+      const scrollAmount = 200
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      })
+    }
+  }
 
   const handleUsernameChange = (e) => {
     const value = e.target.value
@@ -42,12 +85,12 @@ function UserRegistration() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     if (!username.trim()) {
       setError('Please enter a username')
       return
     }
-    
+
     if (username.length < 2) {
       setError('Username must be at least 2 characters')
       return
@@ -63,26 +106,25 @@ function UserRegistration() {
       return
     }
 
-    if (!selectedAvatar) {
-      setError('Please select an avatar')
-      return
-    }
-
     if (!selectedCourse) {
       setError('Please select your course')
       return
     }
 
-    // Save user data to localStorage
+    if (!selectedAvatar) {
+      setError('Please select an avatar')
+      return
+    }
+
     const userData = {
       username: username.trim(),
-      password: password, // In production, this should be hashed
+      password: password,
       avatar: selectedAvatar,
       course: selectedCourse,
       joinedAt: new Date().toISOString()
     }
     localStorage.setItem('user', JSON.stringify(userData))
-    
+
     navigate('/app')
   }
 
@@ -103,7 +145,7 @@ function UserRegistration() {
               value={username}
               onChange={handleUsernameChange}
               placeholder="Enter username (letters & numbers only)"
-              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
+              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white font-normal"
               maxLength={20}
             />
           </div>
@@ -156,40 +198,7 @@ function UserRegistration() {
           </div>
         </div>
 
-        {/* Avatar Selection */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Choose your avatar
-          </label>
-          <div className="grid grid-cols-3 gap-3">
-            {avatars.map((avatar) => (
-              <button
-                key={avatar.id}
-                type="button"
-                onClick={() => setSelectedAvatar(avatar.id)}
-                className={`
-                  relative aspect-square rounded-xl border-4 transition-all hover:scale-105 bg-white
-                  ${selectedAvatar === avatar.id 
-                    ? 'border-primary shadow-lg shadow-primary/20' 
-                    : 'border-gray-200 hover:border-gray-300'}
-                `}
-              >
-                <img
-                  src={avatar.src}
-                  alt={avatar.label}
-                  className="w-full h-full object-cover rounded-lg"
-                />
-                {selectedAvatar === avatar.id && (
-                  <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1">
-                    <Check size={16} />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Course Selection */}
+        {/* Course Selection - Dropdown */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             Course
@@ -209,6 +218,83 @@ function UserRegistration() {
               </option>
             ))}
           </select>
+          {selectedCourse && (
+            <div className="mt-2">
+              <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold text-white ${getCourseColor(selectedCourse)}`}>
+                {getCourseLabel(selectedCourse)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Avatar Selection - Horizontally Scrollable with Arrows */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Choose your avatar
+          </label>
+          <div className="relative">
+            {/* Left Arrow */}
+            {canScrollLeft && (
+              <button
+                type="button"
+                onClick={() => scrollAvatars('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-full shadow-md opacity-70 hover:opacity-100 transition-opacity"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft size={20} className="text-secondary" />
+              </button>
+            )}
+            {/* Right Arrow */}
+            {canScrollRight && (
+              <button
+                type="button"
+                onClick={() => scrollAvatars('right')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-full shadow-md opacity-70 hover:opacity-100 transition-opacity"
+                aria-label="Scroll right"
+              >
+                <ChevronRight size={20} className="text-secondary" />
+              </button>
+            )}
+            {/* Left fade */}
+            {canScrollLeft && (
+              <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none rounded-l-xl" />
+            )}
+            {/* Right fade */}
+            {canScrollRight && (
+              <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none rounded-r-xl" />
+            )}
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="flex gap-3 overflow-x-auto scroll-smooth pb-2 px-1"
+              style={{ scrollbarWidth: 'thin' }}
+            >
+              {avatars.map((avatar) => (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  onClick={() => setSelectedAvatar(avatar.id)}
+                  className={`
+                    relative flex-shrink-0 w-20 h-20 rounded-xl border-4 transition-all hover:scale-105 bg-white
+                    ${selectedAvatar === avatar.id
+                      ? 'border-primary shadow-lg shadow-primary/20'
+                      : 'border-gray-200 hover:border-gray-300'}
+                  `}
+                >
+                  <img
+                    src={avatar.src}
+                    alt={avatar.label}
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                  {selectedAvatar === avatar.id && (
+                    <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1">
+                      <Check size={16} />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Error Message */}
@@ -218,12 +304,12 @@ function UserRegistration() {
           </div>
         )}
 
-        {/* Submit Button */}
+        {/* Submit Button - with reduced opacity */}
         <Button
           type="submit"
           size="lg"
           fullWidth
-          className="py-3.5 text-lg"
+          className="py-3.5 text-lg opacity-90 hover:opacity-100 transition-opacity"
         >
           Let's Go!
         </Button>

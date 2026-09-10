@@ -1,6 +1,6 @@
 // pages/ChatRoom.jsx
 import React, { useState, useRef, useEffect } from 'react'
-import { Send, Check, CheckCheck, LogOut, X, Users, Loader2, Clock } from 'lucide-react'
+import { Send, Check, CheckCheck, LogOut, X, Users, Loader2, Clock, UserPlus, MoreVertical, RefreshCw } from 'lucide-react'
 import Button from '../components/Button'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
@@ -12,15 +12,27 @@ function ChatRoom() {
   const [searchTime, setSearchTime] = useState(0)
   const [partnerName, setPartnerName] = useState('')
   const [partnerAvatar, setPartnerAvatar] = useState(null)
+  const [partnerCourse, setPartnerCourse] = useState('')
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [showEndChatModal, setShowEndChatModal] = useState(false)
+  const [showNewPartnerModal, setShowNewPartnerModal] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
   const searchIntervalRef = useRef(null)
+  const dropdownRef = useRef(null)
 
   const avatars = [avatar1, avatar2, avatar3]
   const partnerNames = ['Alex', 'Jamie', 'Taylor', 'Jordan', 'Morgan', 'Casey', 'Riley', 'Avery']
+  const partnerCourses = ['BSIT', 'BSBA-FM', 'BSBA-MM', 'BEED', 'BSED']
+
+  const getCourseColor = (course) => {
+    if (course === 'BSIT') return 'bg-red-500'
+    if (course === 'BSBA-FM' || course === 'BSBA-MM') return 'bg-yellow-500'
+    if (course === 'BEED' || course === 'BSED') return 'bg-blue-500'
+    return 'bg-gray-400'
+  }
 
   useEffect(() => {
     scrollToBottom()
@@ -34,6 +46,19 @@ function ChatRoom() {
     }
   }, [])
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false)
+      }
+    }
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showDropdown])
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -41,30 +66,27 @@ function ChatRoom() {
   const startMatching = () => {
     setIsSearching(true)
     setSearchTime(0)
-    
-    // Start timer
+
     searchIntervalRef.current = setInterval(() => {
       setSearchTime(prev => prev + 1)
     }, 1000)
 
-    // Simulate finding a match after 2-5 seconds
     const matchDelay = Math.floor(Math.random() * 3000) + 2000
     setTimeout(() => {
-      // Stop timer
       if (searchIntervalRef.current) {
         clearInterval(searchIntervalRef.current)
       }
-      
-      // Select random partner
+
       const randomName = partnerNames[Math.floor(Math.random() * partnerNames.length)]
       const randomAvatar = avatars[Math.floor(Math.random() * avatars.length)]
-      
+      const randomCourse = partnerCourses[Math.floor(Math.random() * partnerCourses.length)]
+
       setPartnerName(randomName)
       setPartnerAvatar(randomAvatar)
+      setPartnerCourse(randomCourse)
       setIsMatched(true)
       setIsSearching(false)
-      
-      // Add welcome message - no emojis
+
       setMessages([
         {
           id: 1,
@@ -98,11 +120,10 @@ function ChatRoom() {
       isMine: true,
       status: 'sent'
     }
-    
+
     setMessages(prev => [...prev, newMsg])
     setNewMessage('')
 
-    // Simulate partner's reply - no emojis
     setTimeout(() => {
       const replies = [
         "That's really interesting. Tell me more about that.",
@@ -124,7 +145,6 @@ function ChatRoom() {
         isMine: false,
         status: 'delivered'
       }])
-      // Update status to seen after a moment
       setTimeout(() => {
         setMessages(prev => {
           const updated = [...prev]
@@ -139,15 +159,16 @@ function ChatRoom() {
   }
 
   const handleEndChat = () => {
+    setShowDropdown(false)
     setShowEndChatModal(true)
   }
 
   const confirmEndChat = () => {
     setShowEndChatModal(false)
-    // Reset chat state
     setIsMatched(false)
     setPartnerName('')
     setPartnerAvatar(null)
+    setPartnerCourse('')
     setMessages([])
     if (searchIntervalRef.current) {
       clearInterval(searchIntervalRef.current)
@@ -158,13 +179,23 @@ function ChatRoom() {
     setShowEndChatModal(false)
   }
 
-  const findNewPartner = () => {
-    setShowEndChatModal(false)
+  const handleNewPartner = () => {
+    setShowDropdown(false)
+    setShowNewPartnerModal(true)
+  }
+
+  const confirmNewPartner = () => {
+    setShowNewPartnerModal(false)
     setIsMatched(false)
     setPartnerName('')
     setPartnerAvatar(null)
+    setPartnerCourse('')
     setMessages([])
     startMatching()
+  }
+
+  const cancelNewPartner = () => {
+    setShowNewPartnerModal(false)
   }
 
   const StatusIcon = ({ status }) => {
@@ -174,7 +205,6 @@ function ChatRoom() {
     return null
   }
 
-  // Format search time
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -205,7 +235,6 @@ function ChatRoom() {
       {/* Chat Content */}
       <div className="relative z-10 flex flex-col h-full">
         {!isMatched && !isSearching ? (
-          // Start Matching Screen
           <div className="flex-1 flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm rounded-2xl shadow-sm p-8">
             <div className="text-center max-w-sm mx-auto">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -227,13 +256,11 @@ function ChatRoom() {
                 Find Chat Partner
               </Button>
               <div className="flex items-center justify-center mt-4 text-xs text-gray-400">
-                
                 <span>Your conversations are private and secure</span>
               </div>
             </div>
           </div>
         ) : isSearching ? (
-          // Searching Screen
           <div className="flex-1 flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm rounded-2xl shadow-sm p-8">
             <div className="text-center max-w-sm mx-auto">
               <div className="relative w-24 h-24 mx-auto mb-6">
@@ -273,54 +300,70 @@ function ChatRoom() {
             </div>
           </div>
         ) : (
-          // Chat Interface
           <>
             {/* Chat Header */}
-            <div className="flex items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-4 flex-shrink-0">
+            <div className="relative z-20 flex items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm mb-4 flex-shrink-0">
               <img
                 src={partnerAvatar}
                 alt={partnerName}
-                className="w-10 h-10 rounded-full object-cover border-2 border-primary"
+                className="w-10 h-10 rounded-full object-cover border-2 border-primary flex-shrink-0"
               />
-              <div className="flex-1">
-                <h3 className="font-bold text-secondary">
-                  {partnerName}
-                </h3>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-normal text-secondary truncate">
+                    {partnerName}
+                  </span>
+                  {partnerCourse && (
+                    <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white ${getCourseColor(partnerCourse)}`}>
+                      {partnerCourse}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-green-500 flex items-center gap-1">
                   <span className="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
                   Online
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  icon={Users}
-                  onClick={findNewPartner}
-                  className="px-3 py-1.5 text-sm flex-shrink-0"
+
+              {/* Dropdown Menu */}
+              <div className="relative flex-shrink-0" ref={dropdownRef}>
+                <button
+                  onClick={() => setShowDropdown(prev => !prev)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-secondary hover:bg-gray-100 transition-colors"
+                  aria-label="Chat options"
                 >
-                  New
-                </Button>
-                <Button 
-                  variant="danger-outline" 
-                  size="sm"
-                  icon={LogOut}
-                  onClick={handleEndChat}
-                  className="px-3 py-1.5 text-sm flex-shrink-0"
-                >
-                  End
-                </Button>
+                  <MoreVertical size={16} />
+                </button>
+
+                {showDropdown && (
+                  <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 animate-fadeIn">
+                    <button
+                      onClick={handleNewPartner}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-secondary hover:bg-gray-50 transition-colors"
+                    >
+                      <RefreshCw size={14} className="text-primary" />
+                      New Partner
+                    </button>
+                    <button
+                      onClick={handleEndChat}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut size={14} />
+                      End Chat
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Messages Container */}
-            <div 
+            <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto pb-4 space-y-3"
+              className="relative z-0 flex-1 overflow-y-auto pb-4 space-y-3"
             >
               {messages.map((msg) => (
-                <div 
-                  key={msg.id} 
+                <div
+                  key={msg.id}
                   className={`flex items-end gap-2 ${msg.isMine ? 'flex-row-reverse' : 'flex-row'}`}
                 >
                   {!msg.isMine && (
@@ -331,10 +374,10 @@ function ChatRoom() {
                     />
                   )}
                   <div className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'} max-w-[70%]`}>
-                    <div 
+                    <div
                       className={`px-4 py-2.5 rounded-2xl w-full ${
-                        msg.isMine 
-                          ? 'bg-primary text-white rounded-br-none' 
+                        msg.isMine
+                          ? 'bg-primary text-white rounded-br-none'
                           : 'bg-white/90 backdrop-blur-sm text-secondary rounded-bl-none shadow-sm'
                       }`}
                     >
@@ -374,14 +417,59 @@ function ChatRoom() {
         )}
       </div>
 
+      {/* New Partner Modal */}
+      {showNewPartnerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={cancelNewPartner}
+          />
+
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <button
+              onClick={cancelNewPartner}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <UserPlus size={28} className="text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary mb-2">
+                Find New Partner?
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to leave this conversation with {partnerName} and find a new partner?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelNewPartner}
+                  className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmNewPartner}
+                  className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+                >
+                  Find New
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* End Chat Modal */}
       {showEndChatModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={cancelEndChat}
           />
-          
+
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
             <button
               onClick={cancelEndChat}
@@ -389,7 +477,7 @@ function ChatRoom() {
             >
               <X size={20} />
             </button>
-            
+
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <LogOut size={28} className="text-red-600" />

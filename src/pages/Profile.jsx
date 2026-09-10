@@ -1,31 +1,110 @@
 // pages/Profile.jsx
 import React, { useState, useEffect } from 'react'
-import { User, Calendar, Edit, Camera } from 'lucide-react'
+import { User, Calendar, Edit, Camera, X, Check, GraduationCap } from 'lucide-react'
+import avatar1 from '../assets/avatars/avatar1.png'
+import avatar2 from '../assets/avatars/avatar2.png'
+import avatar3 from '../assets/avatars/avatar3.png'
 
 function Profile() {
   const [user, setUser] = useState(null)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editedUsername, setEditedUsername] = useState('')
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [showUsernameModal, setShowUsernameModal] = useState(false)
+  const [showCourseModal, setShowCourseModal] = useState(false)
+
+  // Modal temp states
+  const [tempUsername, setTempUsername] = useState('')
+  const [tempAvatar, setTempAvatar] = useState(null)
+  const [tempCourse, setTempCourse] = useState('')
+
+  const avatars = [
+    { id: 1, src: avatar1, label: 'Avatar 1' },
+    { id: 2, src: avatar2, label: 'Avatar 2' },
+    { id: 3, src: avatar3, label: 'Avatar 3' },
+    { id: 4, src: avatar1, label: 'Avatar 4' },
+    { id: 5, src: avatar2, label: 'Avatar 5' },
+    { id: 6, src: avatar3, label: 'Avatar 6' },
+  ]
+
+  const courses = [
+    { value: 'BSIT', label: 'Bachelor of Science in Information Technology', color: 'bg-red-500' },
+    { value: 'BSBA-FM', label: 'Bachelor of Science in Business Administration - Financial Management', color: 'bg-yellow-500' },
+    { value: 'BSBA-MM', label: 'Bachelor of Science in Business Administration - Marketing Management', color: 'bg-yellow-500' },
+    { value: 'BEED', label: 'Bachelor of Elementary Education', color: 'bg-blue-500' },
+    { value: 'BSED', label: 'Bachelor of Secondary Education', color: 'bg-blue-500' },
+    { value: 'not-disclose', label: 'Prefer not to disclose', color: 'bg-gray-400' },
+  ]
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
     if (userData) {
       const parsed = JSON.parse(userData)
       setUser(parsed)
-      setEditedUsername(parsed.username)
+      setTempUsername(parsed.username)
+      setTempAvatar(parsed.avatar)
+      setTempCourse(parsed.course || '')
     }
   }, [])
 
-  const handleSave = () => {
-    if (!editedUsername.trim() || editedUsername.length < 2) return
-    
-    const updatedUser = {
-      ...user,
-      username: editedUsername.trim()
-    }
+  const updateUser = (updates) => {
+    const updatedUser = { ...user, ...updates }
     localStorage.setItem('user', JSON.stringify(updatedUser))
     setUser(updatedUser)
-    setIsEditing(false)
+  }
+
+  const getAvatarSrc = (avatarId) => {
+    const found = avatars.find(a => a.id === avatarId)
+    return found ? found.src : avatar1
+  }
+
+  const getCourseColor = (courseValue) => {
+    const course = courses.find(c => c.value === courseValue)
+    return course ? course.color : 'bg-gray-400'
+  }
+
+  const getCourseLabel = (courseValue) => {
+    if (courseValue === 'not-disclose') return 'Prefer not to disclose'
+    return courseValue
+  }
+
+  // ----- Avatar Modal -----
+  const openAvatarModal = () => {
+    setTempAvatar(user.avatar)
+    setShowAvatarModal(true)
+  }
+
+  const saveAvatar = () => {
+    if (!tempAvatar) return
+    updateUser({ avatar: tempAvatar })
+    setShowAvatarModal(false)
+  }
+
+  // ----- Username Modal -----
+  const openUsernameModal = () => {
+    setTempUsername(user.username)
+    setShowUsernameModal(true)
+  }
+
+  const handleUsernameChange = (e) => {
+    const filtered = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)
+    setTempUsername(filtered)
+  }
+
+  const saveUsername = () => {
+    if (!tempUsername.trim() || tempUsername.length < 2) return
+    updateUser({ username: tempUsername.trim() })
+    setShowUsernameModal(false)
+  }
+
+  // ----- Course Modal -----
+  const openCourseModal = () => {
+    setTempCourse(user.course || '')
+    setShowCourseModal(true)
+  }
+
+  const saveCourse = () => {
+    if (!tempCourse) return
+    updateUser({ course: tempCourse })
+    setShowCourseModal(false)
   }
 
   if (!user) {
@@ -37,94 +116,301 @@ function Profile() {
   }
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-xl">
-      <div className="text-center">
-        {/* Avatar */}
-        <div className="relative inline-block">
-          <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden mx-auto">
-            <img
-              src={`/assets/avatars/avatar${user.avatar}.png`}
-              alt={user.username}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <button className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full hover:bg-blue-600 transition-colors">
-            <Camera size={16} />
-          </button>
-        </div>
-
-        {/* Username */}
-        <div className="mt-4">
-          {isEditing ? (
-            <div className="flex items-center gap-2 justify-center">
-              <input
-                type="text"
-                value={editedUsername}
-                onChange={(e) => {
-                  const filtered = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)
-                  setEditedUsername(filtered)
-                }}
-                className="px-3 py-1 border-2 border-primary rounded-xl focus:outline-none text-center"
-                maxLength={20}
+    <>
+      <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-xl">
+        <div className="text-center">
+          {/* Avatar */}
+          <div className="relative inline-block">
+            <button
+              type="button"
+              onClick={openAvatarModal}
+              className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden mx-auto block hover:opacity-90 transition-opacity"
+              aria-label="Change avatar"
+            >
+              <img
+                src={getAvatarSrc(user.avatar)}
+                alt={user.username}
+                className="w-full h-full object-cover"
               />
-              <button
-                onClick={handleSave}
-                className="bg-primary text-white px-4 py-1 rounded-xl hover:bg-blue-600 transition-colors"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  setEditedUsername(user.username)
-                  setIsEditing(false)
-                }}
-                className="bg-gray-200 text-gray-700 px-4 py-1 rounded-xl hover:bg-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 justify-center">
-              <h2 className="text-2xl font-bold text-secondary">{user.username}</h2>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <Edit size={18} className="text-gray-500" />
-              </button>
-            </div>
-          )}
-        </div>
+            </button>
+            <button
+              type="button"
+              onClick={openAvatarModal}
+              className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full hover:bg-blue-600 transition-colors shadow-md"
+              aria-label="Change avatar"
+            >
+              <Camera size={16} />
+            </button>
+          </div>
 
-        {/* Profile Info */}
-        <div className="mt-6 space-y-3">
-          <div className="flex items-center justify-center gap-2 text-gray-600">
-            <User size={18} />
-            <span>Member</span>
+          {/* Username */}
+          <div className="mt-4 flex items-center gap-2 justify-center">
+            <h2 className="text-2xl font-bold text-secondary">{user.username}</h2>
+            <button
+              type="button"
+              onClick={openUsernameModal}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Edit username"
+            >
+              <Edit size={18} className="text-gray-500" />
+            </button>
           </div>
-          <div className="flex items-center justify-center gap-2 text-gray-600">
-            <Calendar size={18} />
-            <span>Joined {new Date(user.joinedAt).toLocaleDateString()}</span>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="mt-6 grid grid-cols-3 gap-4 pt-6 border-t-2 border-gray-100">
-          <div>
-            <p className="text-2xl font-bold text-primary">0</p>
-            <p className="text-sm text-gray-500">Messages</p>
+          {/* Course */}
+          <div className="mt-3 flex items-center gap-2 justify-center">
+            {user.course ? (
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold text-white ${getCourseColor(user.course)}`}
+              >
+                {getCourseLabel(user.course)}
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400 italic">No course set</span>
+            )}
+            <button
+              type="button"
+              onClick={openCourseModal}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Edit course"
+            >
+              <Edit size={16} className="text-gray-500" />
+            </button>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-primary">0</p>
-            <p className="text-sm text-gray-500">Posts</p>
+
+          {/* Profile Info */}
+          <div className="mt-6 space-y-3">
+            <div className="flex items-center justify-center gap-2 text-gray-600">
+              <User size={18} />
+              <span>Member</span>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-gray-600">
+              <Calendar size={18} />
+              <span>Joined {new Date(user.joinedAt).toLocaleDateString()}</span>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-primary">0</p>
-            <p className="text-sm text-gray-500">Likes</p>
+
+          {/* Stats */}
+          <div className="mt-6 grid grid-cols-3 gap-4 pt-6 border-t-2 border-gray-100">
+            <div>
+              <p className="text-2xl font-bold text-primary">0</p>
+              <p className="text-sm text-gray-500">Messages</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-primary">0</p>
+              <p className="text-sm text-gray-500">Posts</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-primary">0</p>
+              <p className="text-sm text-gray-500">Likes</p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* ---------- Change Avatar Modal ---------- */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowAvatarModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <button
+              onClick={() => setShowAvatarModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Camera size={24} className="text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary">Change Avatar</h3>
+              <p className="text-sm text-gray-500 mt-1">Pick a new look for your profile</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {avatars.map((avatar) => (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  onClick={() => setTempAvatar(avatar.id)}
+                  className={`
+                    relative aspect-square rounded-xl border-4 transition-all hover:scale-105 bg-white overflow-hidden
+                    ${tempAvatar === avatar.id
+                      ? 'border-primary shadow-lg shadow-primary/20'
+                      : 'border-gray-200 hover:border-gray-300'}
+                  `}
+                >
+                  <img
+                    src={avatar.src}
+                    alt={avatar.label}
+                    className="w-full h-full object-cover"
+                  />
+                  {tempAvatar === avatar.id && (
+                    <div className="absolute top-1 right-1 bg-primary text-white rounded-full p-0.5">
+                      <Check size={14} />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAvatarModal(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveAvatar}
+                disabled={!tempAvatar}
+                className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- Change Username Modal ---------- */}
+      {showUsernameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowUsernameModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <button
+              onClick={() => setShowUsernameModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <User size={24} className="text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary">Change Username</h3>
+              <p className="text-sm text-gray-500 mt-1">Letters and numbers only</p>
+            </div>
+
+            <div className="mb-6">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User size={18} className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={tempUsername}
+                  onChange={handleUsernameChange}
+                  placeholder="Enter username"
+                  maxLength={20}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary focus:outline-none transition-colors bg-white"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-between mt-1 px-1">
+                <span className="text-xs text-gray-500">Min 2 characters</span>
+                <span className="text-xs text-gray-500">{tempUsername.length}/20</span>
+              </div>
+              {tempUsername.length > 0 && tempUsername.length < 2 && (
+                <p className="text-xs text-red-500 mt-1 px-1">
+                  Username must be at least 2 characters
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUsernameModal(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveUsername}
+                disabled={!tempUsername.trim() || tempUsername.length < 2}
+                className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- Change Course Modal ---------- */}
+      {showCourseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowCourseModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <button
+              onClick={() => setShowCourseModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <GraduationCap size={24} className="text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary">Change Course</h3>
+              <p className="text-sm text-gray-500 mt-1">Select your current course</p>
+            </div>
+
+            <div className="space-y-2 mb-6 max-h-64 overflow-y-auto pr-1">
+              {courses.map((course) => (
+                <button
+                  key={course.value}
+                  type="button"
+                  onClick={() => setTempCourse(course.value)}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all
+                    ${tempCourse === course.value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}
+                  `}
+                >
+                  <span className={`w-3 h-3 rounded-full flex-shrink-0 ${course.color}`} />
+                  <span className="text-sm text-secondary flex-1">{course.label}</span>
+                  {tempCourse === course.value && (
+                    <Check size={18} className="text-primary flex-shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCourseModal(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveCourse}
+                disabled={!tempCourse}
+                className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

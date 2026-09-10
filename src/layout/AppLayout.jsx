@@ -113,7 +113,6 @@ function AppLayout() {
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 overflow-hidden">
                   <div className="px-4 py-2 border-b border-gray-100">
                     <p className="text-sm font-medium text-secondary">{user.username}</p>
-                    <p className="text-xs text-gray-500">{user.email || 'student@occ.edu'}</p>
                   </div>
                   <button
                     onClick={handleLogout}
