@@ -1,5 +1,5 @@
 // src/hooks/useAuth.js
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { authService, profileService } from '../services'
 
 export function useAuth() {
@@ -53,5 +53,19 @@ export function useAuth() {
     }
   }, [])
 
-  return { user, profile, loading }
+  // Re-fetch the profile row from the DB and update local state.
+  // Call this after any profile update (avatar/username/course) so the
+  // UI reflects the change instead of showing stale cached data.
+  const refreshProfile = useCallback(async () => {
+    try {
+      const p = await profileService.getMyProfile()
+      setProfile(p)
+      return p
+    } catch (e) {
+      console.warn('Profile refresh failed:', e.message)
+      return null
+    }
+  }, [])
+
+  return { user, profile, loading, refreshProfile }
 }

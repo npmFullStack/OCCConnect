@@ -1,16 +1,20 @@
 // pages/Profile.jsx
 import React, { useState, useEffect } from 'react'
 import { User, Calendar, Edit, Camera, X, Check, GraduationCap } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '../context/AuthContext'
 import { useProfile } from '../hooks/useProfile'
+import { postService } from '../services'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
+import avatar4 from '../assets/avatars/avatar4.png'
+import avatar5 from '../assets/avatars/avatar5.png'
+import avatar6 from '../assets/avatars/avatar6.png'
 
-const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3 }
+const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3, 4: avatar4, 5: avatar5, 6: avatar6 }
 
 function Profile() {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, refreshProfile } = useAuth()
   const { updateProfile, saving } = useProfile()
 
   const [showAvatarModal, setShowAvatarModal] = useState(false)
@@ -23,10 +27,17 @@ function Profile() {
   const [tempAvatar, setTempAvatar] = useState(null)
   const [tempCourse, setTempCourse] = useState('')
 
+  // Post count for the stats section
+  const [postCount, setPostCount] = useState(0)
+  const [postCountLoading, setPostCountLoading] = useState(true)
+
   const avatars = [
     { id: 1, src: avatar1, label: 'Avatar 1' },
     { id: 2, src: avatar2, label: 'Avatar 2' },
     { id: 3, src: avatar3, label: 'Avatar 3' },
+    { id: 4, src: avatar4, label: 'Avatar 4' },
+    { id: 5, src: avatar5, label: 'Avatar 5' },
+    { id: 6, src: avatar6, label: 'Avatar 6' },
   ]
 
   const courses = [
@@ -45,6 +56,18 @@ function Profile() {
       setTempCourse(profile.course || '')
     }
   }, [profile])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    let mounted = true
+    setPostCountLoading(true)
+    postService
+      .getUserPostCount(profile.id)
+      .then((count) => { if (mounted) setPostCount(count) })
+      .catch((e) => console.warn('Failed to load post count:', e.message))
+      .finally(() => { if (mounted) setPostCountLoading(false) })
+    return () => { mounted = false }
+  }, [profile?.id])
 
   const getAvatarSrc = (avatarId) => avatarMap[avatarId] || avatar1
 
@@ -69,6 +92,7 @@ function Profile() {
     if (!tempAvatar) return
     try {
       await updateProfile({ avatar: tempAvatar })
+      await refreshProfile()
       setShowAvatarModal(false)
     } catch (e) {
       setError(e.message)
@@ -91,6 +115,7 @@ function Profile() {
     if (!tempUsername.trim() || tempUsername.length < 2) return
     try {
       await updateProfile({ username: tempUsername.trim() })
+      await refreshProfile()
       setShowUsernameModal(false)
     } catch (e) {
       setError(e.message)
@@ -108,6 +133,7 @@ function Profile() {
     if (!tempCourse) return
     try {
       await updateProfile({ course: tempCourse })
+      await refreshProfile()
       setShowCourseModal(false)
     } catch (e) {
       setError(e.message)
@@ -197,18 +223,12 @@ function Profile() {
           </div>
 
           {/* Stats */}
-          <div className="mt-6 grid grid-cols-3 gap-4 pt-6 border-t-2 border-gray-100">
-            <div>
-              <p className="text-2xl font-bold text-primary">0</p>
-              <p className="text-sm text-gray-500">Messages</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-primary">0</p>
+          <div className="mt-6 flex justify-center pt-6 border-t-2 border-gray-100">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-primary">
+                {postCountLoading ? '-' : postCount}
+              </p>
               <p className="text-sm text-gray-500">Posts</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-primary">0</p>
-              <p className="text-sm text-gray-500">Likes</p>
             </div>
           </div>
         </div>

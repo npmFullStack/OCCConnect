@@ -2,20 +2,27 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { MessageSquare, Users, User, LogOut, ChevronDown, Users as UsersIcon } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '../context/AuthContext'
 import { authService, supabase } from '../services'
+import { useChatGuard } from '../context/ChatGuardContext'
 import avatar1 from '../assets/avatars/avatar1.png'
 import avatar2 from '../assets/avatars/avatar2.png'
 import avatar3 from '../assets/avatars/avatar3.png'
+import avatar4 from '../assets/avatars/avatar4.png'
+import avatar5 from '../assets/avatars/avatar5.png'
+import avatar6 from '../assets/avatars/avatar6.png'
 
-const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3 }
+const avatarMap = { 1: avatar1, 2: avatar2, 3: avatar3, 4: avatar4, 5: avatar5, 6: avatar6 }
 
 function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, profile, loading } = useAuth()
+  const { isChatActive, endActiveChat } = useChatGuard()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [onlineCount, setOnlineCount] = useState(0)
+  const [showLeaveChatModal, setShowLeaveChatModal] = useState(false)
+  const [pendingNavPath, setPendingNavPath] = useState(null)
   const dropdownRef = useRef(null)
   const presenceChannelRef = useRef(null)
 
@@ -85,6 +92,10 @@ function AppLayout() {
 
   const handleLogout = async () => {
     try {
+      // If a chat is active, end it first
+      if (isChatActive) {
+        await endActiveChat()
+      }
       // Untrack presence before signing out so the count updates immediately
       if (presenceChannelRef.current) {
         await presenceChannelRef.current.untrack()
@@ -96,6 +107,33 @@ function AppLayout() {
     } catch (err) {
       console.error('Logout error:', err)
     }
+  }
+
+  // ✅ Guarded navigation: only intercept when leaving the ChatRoom route
+  // (the index "/app") while a chat is active.
+  const handleNavClick = (path) => {
+    const isLeavingChatRoom = location.pathname === '/app' && path !== '/app'
+
+    if (isLeavingChatRoom && isChatActive) {
+      setPendingNavPath(path)
+      setShowLeaveChatModal(true)
+      return
+    }
+
+    navigate(path)
+  }
+
+  const cancelLeaveChat = () => {
+    setShowLeaveChatModal(false)
+    setPendingNavPath(null)
+  }
+
+  const confirmLeaveChat = async () => {
+    const target = pendingNavPath
+    setShowLeaveChatModal(false)
+    setPendingNavPath(null)
+    await endActiveChat()
+    if (target) navigate(target)
   }
 
   const navItems = [
@@ -230,7 +268,7 @@ function AppLayout() {
               return (
                 <button
                   key={item.path}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => handleNavClick(item.path)}
                   className={`
                     flex flex-col items-center gap-1 px-4 py-2 rounded-xl transition-all
                     ${isActive
@@ -246,6 +284,41 @@ function AppLayout() {
           </div>
         </div>
       </nav>
+
+      {/* ✅ Leave Chat Confirmation Modal (bottom-nav only) */}
+      {showLeaveChatModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={cancelLeaveChat}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <LogOut size={28} className="text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-secondary mb-2">Leaving this page?</h3>
+              <p className="text-gray-600 mb-6">
+                Leaving now will end your current chat. Do you want to continue?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelLeaveChat}
+                  className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl text-secondary font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmLeaveChat}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

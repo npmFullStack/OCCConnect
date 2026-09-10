@@ -2,6 +2,15 @@
 -- ============================================================
 -- OCC Connect - Full Database Schema
 -- Safe to re-run: uses drop-if-exists and create-or-replace
+--
+-- FIX (this version): posts.user_id and post_comments.user_id now
+-- reference public.profiles instead of auth.users. Without this,
+-- Supabase cannot resolve the "profiles:user_id(username, avatar)"
+-- embedded select used by postService.js, and every post insert/read
+-- fails outright (which is why "New Post" appeared to do nothing).
+-- This script drops and recreates public.posts, public.post_comments,
+-- public.post_likes and public.post_reports, so just re-run it in
+-- full against your Supabase project's SQL editor to apply the fix.
 -- ============================================================
 
 -- ============================================================
@@ -9,6 +18,14 @@
 -- ============================================================
 drop function if exists public.find_match() cascade;
 drop function if exists public.is_conversation_participant(uuid, uuid) cascade;
+drop function if exists public.handle_new_user() cascade;
+drop trigger if exists on_auth_user_created on auth.users;
+
+-- Drop post-related objects (order matters due to FKs)
+drop table if exists public.post_reports cascade;
+drop table if exists public.post_comments cascade;
+drop table if exists public.post_likes cascade;
+drop table if exists public.posts cascade;
 
 -- ============================================================
 -- 1. PROFILES
@@ -52,7 +69,6 @@ begin
 end;
 $$ language plpgsql security definer;
 
-drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
@@ -146,8 +162,6 @@ create index if not exists messages_conversation_idx on public.messages (convers
 
 alter table public.messages enable row level security;
 
--- IMPORTANT: Realtime needs a simple, non-correlated policy to work reliably.
--- We use a SECURITY DEFINER helper function to avoid subquery issues in realtime.
 create or replace function public.is_conversation_participant(conv_id uuid, uid uuid)
 returns boolean
 language sql
@@ -184,10 +198,182 @@ create policy "Participants can update messages"
 
 
 -- ============================================================
--- 5. find_match() RPC
--- Matches the current user with the oldest waiting user in the
--- same course. Also returns a recent conversation if the user
--- was already matched (race-condition safe).
+-- 5. POSTS (Connect Wall)
+-- ============================================================
+-- NOTE: user_id references public.profiles (not auth.users) so that
+-- PostgREST/Supabase can resolve the "profiles:user_id(...)" embedded
+-- select used in postService.js. profiles.id itself references
+-- auth.users on delete cascade, so deleting a user still cascades
+-- all the way down to posts.
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles on delete cascade not null,
+  content text not null,
+  color text default '#4F46E5',
+  created_at timestamptz default now()
+);
+
+create index if not exists posts_created_at_idx on public.posts (created_at desc);
+create index if not exists posts_user_id_idx on public.posts (user_id);
+
+alter table public.posts enable row level security;
+
+drop policy if exists "Posts are viewable by everyone" on public.posts;
+create policy "Posts are viewable by everyone"
+  on public.posts for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Users can create own posts" on public.posts;
+create policy "Users can create own posts"
+  on public.posts for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own posts" on public.posts;
+create policy "Users can delete own posts"
+  on public.posts for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+
+-- ============================================================
+-- 6. POST LIKES
+-- ============================================================
+create table if not exists public.post_likes (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid references public.posts on delete cascade not null,
+  user_id uuid references auth.users on delete cascade not null,
+  created_at timestamptz default now(),
+  unique (post_id, user_id)
+);
+
+create index if not exists post_likes_post_id_idx on public.post_likes (post_id);
+
+alter table public.post_likes enable row level security;
+
+drop policy if exists "Post likes are viewable by everyone" on public.post_likes;
+create policy "Post likes are viewable by everyone"
+  on public.post_likes for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Users can like posts" on public.post_likes;
+create policy "Users can like posts"
+  on public.post_likes for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can unlike posts" on public.post_likes;
+create policy "Users can unlike posts"
+  on public.post_likes for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+
+-- ============================================================
+-- 7. POST COMMENTS
+-- ============================================================
+-- NOTE: user_id references public.profiles for the same reason as
+-- posts.user_id above (postService.js embeds "profiles:user_id(...)").
+create table if not exists public.post_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid references public.posts on delete cascade not null,
+  user_id uuid references public.profiles on delete cascade not null,
+  content text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists post_comments_post_id_idx on public.post_comments (post_id, created_at);
+
+alter table public.post_comments enable row level security;
+
+drop policy if exists "Post comments are viewable by everyone" on public.post_comments;
+create policy "Post comments are viewable by everyone"
+  on public.post_comments for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Users can add comments" on public.post_comments;
+create policy "Users can add comments"
+  on public.post_comments for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own comments" on public.post_comments;
+create policy "Users can delete own comments"
+  on public.post_comments for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+
+-- ============================================================
+-- 8. POST REPORTS
+-- ============================================================
+create table if not exists public.post_reports (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid references public.posts on delete cascade not null,
+  reporter_id uuid references auth.users on delete cascade not null,
+  reason text default 'No reason provided',
+  created_at timestamptz default now(),
+  unique (post_id, reporter_id)
+);
+
+create index if not exists post_reports_post_id_idx on public.post_reports (post_id);
+
+alter table public.post_reports enable row level security;
+
+drop policy if exists "Users can insert reports" on public.post_reports;
+create policy "Users can insert reports"
+  on public.post_reports for insert
+  to authenticated
+  with check (auth.uid() = reporter_id);
+
+drop policy if exists "Users can view own reports" on public.post_reports;
+create policy "Users can view own reports"
+  on public.post_reports for select
+  to authenticated
+  using (auth.uid() = reporter_id);
+
+-- Allow anyone to count reports (needed for client-side auto-removal check)
+drop policy if exists "Anyone can count reports" on public.post_reports;
+create policy "Anyone can count reports"
+  on public.post_reports for select
+  to authenticated
+  using (true);
+
+
+-- ============================================================
+-- 9. TRIGGER: Auto-delete posts with 5+ reports
+-- ============================================================
+create or replace function public.handle_post_report()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  v_report_count int;
+begin
+  select count(*) into v_report_count
+  from public.post_reports
+  where post_id = new.post_id;
+
+  if v_report_count >= 5 then
+    delete from public.posts where id = new.post_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_post_report_created on public.post_reports;
+create trigger on_post_report_created
+  after insert on public.post_reports
+  for each row execute function public.handle_post_report();
+
+
+-- ============================================================
+-- 10. find_match() RPC
 -- ============================================================
 create or replace function public.find_match()
 returns table (
@@ -211,8 +397,6 @@ begin
     return;
   end if;
 
-  -- 1) If I'm already in a recent conversation (someone matched with me
-  --    while I was still polling), return that instead of looking again.
   select
     c.id            as conversation_id,
     case when c.user_a = v_user_id then c.user_b else c.user_a end as partner_id,
@@ -226,7 +410,6 @@ begin
   limit 1;
 
   if v_existing.conversation_id is not null then
-    -- Ensure I'm not stuck in the queue anymore
     delete from public.match_queue where user_id = v_user_id;
 
     return query
@@ -241,7 +424,6 @@ begin
     return;
   end if;
 
-  -- 2) Otherwise I must be in the queue to be matched
   select course into v_my_course
   from public.match_queue
   where user_id = v_user_id;
@@ -250,17 +432,8 @@ begin
     return;
   end if;
 
-  -- 2.5) Serialize matching so two concurrent callers can never both
-  --      grab a partner and create two separate conversations at once.
-  --      (Without this, two browsers polling at the same instant can
-  --      each successfully match, leaving each side paired with a
-  --      different conversation.)
   perform pg_advisory_xact_lock(hashtext('occ_find_match'));
 
-  -- 3) Find the oldest waiting partner, regardless of course.
-  --    Course is no longer a matching filter -- any two waiting users
-  --    are paired first-come-first-served. partner_course is still
-  --    returned below so the UI can display it.
   select mq.*
   into v_partner
   from public.match_queue mq
@@ -273,12 +446,10 @@ begin
     return;
   end if;
 
-  -- 4) Create the conversation
   insert into public.conversations (user_a, user_b, course)
   values (v_user_id, v_partner.user_id, v_my_course)
   returning id into v_conversation_id;
 
-  -- 5) Remove both users from the queue
   delete from public.match_queue
   where user_id in (v_user_id, v_partner.user_id);
 
@@ -296,12 +467,10 @@ grant execute on function public.find_match() to authenticated;
 
 
 -- ============================================================
--- 6. REALTIME
--- Enable realtime for messages, conversations, and match_queue
+-- 11. REALTIME
 -- ============================================================
 do $$
 begin
-  -- Ensure the publication exists
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
@@ -335,10 +504,43 @@ begin
   ) then
     alter publication supabase_realtime add table public.match_queue;
   end if;
+
+  -- posts
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'posts'
+  ) then
+    alter publication supabase_realtime add table public.posts;
+  end if;
+
+  -- post_likes
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'post_likes'
+  ) then
+    alter publication supabase_realtime add table public.post_likes;
+  end if;
+
+  -- post_comments
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'post_comments'
+  ) then
+    alter publication supabase_realtime add table public.post_comments;
+  end if;
 end $$;
 
--- IMPORTANT: Set REPLICA IDENTITY FULL so realtime sends the full row
--- (needed for DELETE events and for RLS checks on UPDATE/DELETE)
+-- Replica identity for realtime DELETE events
 alter table public.messages replica identity full;
 alter table public.conversations replica identity full;
 alter table public.match_queue replica identity full;
+alter table public.posts replica identity full;
+alter table public.post_likes replica identity full;
+alter table public.post_comments replica identity full;
+alter table public.post_reports replica identity full;
