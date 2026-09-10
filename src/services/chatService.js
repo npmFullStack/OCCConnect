@@ -35,6 +35,36 @@ export async function tryFindMatch() {
   return data?.[0] ?? null
 }
 
+// ✅ Realtime match detection: fires the instant a conversation row is
+// created with me as a participant (as user_a OR user_b), instead of
+// waiting for the next polling tick. Callers should still call
+// tryFindMatch() when this fires, since it returns the full partner
+// info (username/avatar/course) that a raw table row doesn't have.
+export function subscribeToMyMatches(userId, onMatch) {
+  const channelA = supabase
+    .channel(`match-a:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'conversations', filter: `user_a=eq.${userId}` },
+      (payload) => onMatch(payload.new)
+    )
+    .subscribe()
+
+  const channelB = supabase
+    .channel(`match-b:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'conversations', filter: `user_b=eq.${userId}` },
+      (payload) => onMatch(payload.new)
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channelA)
+    supabase.removeChannel(channelB)
+  }
+}
+
 export async function endConversation(conversationId) {
   const { error } = await supabase
     .from('conversations')

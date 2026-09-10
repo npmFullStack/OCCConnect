@@ -55,6 +55,7 @@ function ChatRoom() {
   const chatContainerRef = useRef(null)
   const searchIntervalRef = useRef(null)
   const matchPollRef = useRef(null)
+  const matchRealtimeUnsubRef = useRef(null)
   const dropdownRef = useRef(null)
   const presenceChannelRef = useRef(null)
   const typingTimeoutRef = useRef(null)
@@ -81,6 +82,7 @@ function ChatRoom() {
     return () => {
       if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
       if (matchPollRef.current) clearInterval(matchPollRef.current)
+      if (matchRealtimeUnsubRef.current) matchRealtimeUnsubRef.current()
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
       if (presenceChannelRef.current) {
         try {
@@ -160,6 +162,57 @@ function ChatRoom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // ✅ Applies a resolved match (from either the realtime channel or the
+  // fallback poll) to component state. Guarded so it only ever runs once
+  // per search, even if both paths fire around the same time.
+  const applyMatch = useCallback(async (match) => {
+    if (!match || isMatchedRef.current) return
+    isMatchedRef.current = true // set synchronously to block a second caller
+
+    if (matchPollRef.current) clearInterval(matchPollRef.current)
+    if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
+    if (matchRealtimeUnsubRef.current) {
+      matchRealtimeUnsubRef.current()
+      matchRealtimeUnsubRef.current = null
+    }
+
+    setIsSearching(false)
+    setIsMatched(true)
+    const convId = match.conversation_id || match.id
+    setConversationId(convId)
+    setPartnerName(match.partner_username || match.username || 'Partner')
+    setPartnerAvatar(match.partner_avatar || match.avatar || 1)
+    setPartnerCourse(match.partner_course || match.course || '')
+
+    try {
+      const existing = await chatService.getMessages(convId)
+      setMessages(
+        existing.map((m) => ({
+          id: m.id,
+          user: m.sender_id === user?.id ? 'You' : (match.partner_username || 'Partner'),
+          text: m.text,
+          time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMine: m.sender_id === user?.id,
+          status: m.status || 'sent',
+        }))
+      )
+    } catch (err) {
+      console.error('Load messages error:', err)
+    }
+
+    presenceChannelRef.current = presenceService.createPresenceChannel(
+      convId,
+      { userId: user?.id, username: profile?.username },
+      {
+        onTyping: (payload) => {
+          if (payload.userId !== user?.id) {
+            setIsPartnerTyping(payload.isTyping)
+          }
+        },
+      }
+    )
+  }, [user?.id, profile?.username])
+
   const startMatching = async () => {
     if (!profile) return
 
@@ -177,48 +230,27 @@ function ChatRoom() {
         username: profile.username,
       })
 
+      // ✅ Primary path: get notified the instant Postgres creates a
+      // conversation row with me in it, instead of waiting on a timer.
+      matchRealtimeUnsubRef.current = chatService.subscribeToMyMatches(user.id, async () => {
+        try {
+          const match = await chatService.tryFindMatch()
+          if (match) applyMatch(match)
+        } catch (err) {
+          console.error('Realtime match resolve error:', err)
+        }
+      })
+
+      // ✅ Fallback path: in case the realtime event is ever missed
+      // (dropped connection, etc.), keep a slower safety-net poll.
       matchPollRef.current = setInterval(async () => {
         try {
           const match = await chatService.tryFindMatch()
-          if (match) {
-            clearInterval(matchPollRef.current)
-            clearInterval(searchIntervalRef.current)
-            setIsSearching(false)
-            setIsMatched(true)
-            const convId = match.conversation_id || match.id
-            setConversationId(convId)
-            setPartnerName(match.partner_username || match.username || 'Partner')
-            setPartnerAvatar(match.partner_avatar || match.avatar || 1)
-            setPartnerCourse(match.partner_course || match.course || '')
-
-            const existing = await chatService.getMessages(convId)
-            setMessages(
-              existing.map((m) => ({
-                id: m.id,
-                user: m.sender_id === user?.id ? 'You' : (match.partner_username || 'Partner'),
-                text: m.text,
-                time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                isMine: m.sender_id === user?.id,
-                status: m.status || 'sent',
-              }))
-            )
-
-            presenceChannelRef.current = presenceService.createPresenceChannel(
-              convId,
-              { userId: user?.id, username: profile.username },
-              {
-                onTyping: (payload) => {
-                  if (payload.userId !== user?.id) {
-                    setIsPartnerTyping(payload.isTyping)
-                  }
-                },
-              }
-            )
-          }
+          if (match) applyMatch(match)
         } catch (err) {
           console.error('Match poll error:', err)
         }
-      }, 2000)
+      }, 4000)
     } catch (err) {
       console.error('Match queue error:', err)
       setIsSearching(false)
@@ -316,6 +348,7 @@ function ChatRoom() {
   const cancelNewPartner = () => setShowNewPartnerModal(false)
 
   const resetChat = () => {
+    isMatchedRef.current = false
     setIsMatched(false)
     setConversationId(null)
     setPartnerName('')
@@ -325,6 +358,10 @@ function ChatRoom() {
     setIsPartnerTyping(false)
     if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
     if (matchPollRef.current) clearInterval(matchPollRef.current)
+    if (matchRealtimeUnsubRef.current) {
+      matchRealtimeUnsubRef.current()
+      matchRealtimeUnsubRef.current = null
+    }
   }
 
   const StatusIcon = ({ status }) => {
@@ -402,6 +439,10 @@ function ChatRoom() {
                 onClick={async () => {
                   if (searchIntervalRef.current) clearInterval(searchIntervalRef.current)
                   if (matchPollRef.current) clearInterval(matchPollRef.current)
+                  if (matchRealtimeUnsubRef.current) {
+                    matchRealtimeUnsubRef.current()
+                    matchRealtimeUnsubRef.current = null
+                  }
                   await chatService.leaveMatchQueue()
                   setIsSearching(false)
                 }}

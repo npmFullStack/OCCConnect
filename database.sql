@@ -8,6 +8,7 @@
 -- 0. CLEANUP (safe re-run)
 -- ============================================================
 drop function if exists public.find_match() cascade;
+drop function if exists public.is_conversation_participant(uuid, uuid) cascade;
 
 -- ============================================================
 -- 1. PROFILES
@@ -184,6 +185,9 @@ create policy "Participants can update messages"
 
 -- ============================================================
 -- 5. find_match() RPC
+-- Matches the current user with the oldest waiting user in the
+-- same course. Also returns a recent conversation if the user
+-- was already matched (race-condition safe).
 -- ============================================================
 create or replace function public.find_match()
 returns table (
@@ -201,11 +205,43 @@ declare
   v_my_course text;
   v_partner record;
   v_conversation_id uuid;
+  v_existing record;
 begin
   if v_user_id is null then
     return;
   end if;
 
+  -- 1) If I'm already in a recent conversation (someone matched with me
+  --    while I was still polling), return that instead of looking again.
+  select
+    c.id            as conversation_id,
+    case when c.user_a = v_user_id then c.user_b else c.user_a end as partner_id,
+    c.created_at
+  into v_existing
+  from public.conversations c
+  where (c.user_a = v_user_id or c.user_b = v_user_id)
+    and c.ended_at is null
+    and c.created_at > now() - interval '30 seconds'
+  order by c.created_at desc
+  limit 1;
+
+  if v_existing.conversation_id is not null then
+    -- Ensure I'm not stuck in the queue anymore
+    delete from public.match_queue where user_id = v_user_id;
+
+    return query
+      select
+        v_existing.conversation_id,
+        p.id,
+        p.username,
+        p.avatar,
+        p.course
+      from public.profiles p
+      where p.id = v_existing.partner_id;
+    return;
+  end if;
+
+  -- 2) Otherwise I must be in the queue to be matched
   select course into v_my_course
   from public.match_queue
   where user_id = v_user_id;
@@ -214,11 +250,21 @@ begin
     return;
   end if;
 
+  -- 2.5) Serialize matching so two concurrent callers can never both
+  --      grab a partner and create two separate conversations at once.
+  --      (Without this, two browsers polling at the same instant can
+  --      each successfully match, leaving each side paired with a
+  --      different conversation.)
+  perform pg_advisory_xact_lock(hashtext('occ_find_match'));
+
+  -- 3) Find the oldest waiting partner, regardless of course.
+  --    Course is no longer a matching filter -- any two waiting users
+  --    are paired first-come-first-served. partner_course is still
+  --    returned below so the UI can display it.
   select mq.*
   into v_partner
   from public.match_queue mq
   where mq.user_id <> v_user_id
-    and (v_my_course = 'not-disclose' or mq.course = v_my_course or mq.course = 'not-disclose')
   order by mq.joined_at asc
   limit 1
   for update skip locked;
@@ -227,10 +273,12 @@ begin
     return;
   end if;
 
+  -- 4) Create the conversation
   insert into public.conversations (user_a, user_b, course)
   values (v_user_id, v_partner.user_id, v_my_course)
   returning id into v_conversation_id;
 
+  -- 5) Remove both users from the queue
   delete from public.match_queue
   where user_id in (v_user_id, v_partner.user_id);
 
