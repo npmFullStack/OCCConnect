@@ -80,20 +80,33 @@ export async function updateMessageStatus(messageId, status) {
   if (error) throw error
 }
 
+// ✅ Fixed subscription: listen for INSERT and UPDATE, no event wildcard filter
 export function subscribeToMessages(conversationId, onMessage) {
   const channel = supabase
     .channel(`messages:${conversationId}`)
     .on(
       'postgres_changes',
       {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'messages',
         filter: `conversation_id=eq.${conversationId}`,
       },
       (payload) => onMessage(payload)
     )
-    .subscribe()
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => onMessage(payload)
+    )
+    .subscribe((status) => {
+      console.log('[messages] subscription status:', status)
+    })
 
   return () => supabase.removeChannel(channel)
 }

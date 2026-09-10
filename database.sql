@@ -5,6 +5,11 @@
 -- ============================================================
 
 -- ============================================================
+-- 0. CLEANUP (safe re-run)
+-- ============================================================
+drop function if exists public.find_match() cascade;
+
+-- ============================================================
 -- 1. PROFILES
 -- ============================================================
 create table if not exists public.profiles (
@@ -38,7 +43,7 @@ begin
   values (
     new.id,
     new.raw_user_meta_data->>'username',
-    (new.raw_user_meta_data->>'avatar')::int,
+    coalesce((new.raw_user_meta_data->>'avatar')::int, 1),
     new.raw_user_meta_data->>'course'
   )
   on conflict (id) do nothing;
@@ -69,21 +74,18 @@ create index if not exists match_queue_joined_at_idx on public.match_queue (join
 
 alter table public.match_queue enable row level security;
 
--- Anyone authenticated can read the queue (for online count + matching)
 drop policy if exists "Anyone can read match_queue" on public.match_queue;
 create policy "Anyone can read match_queue"
   on public.match_queue for select
   to authenticated
   using (true);
 
--- Users can only insert their own row
 drop policy if exists "Users can insert own match_queue row" on public.match_queue;
 create policy "Users can insert own match_queue row"
   on public.match_queue for insert
   to authenticated
   with check (auth.uid() = user_id);
 
--- Users can only delete their own row
 drop policy if exists "Users can delete own match_queue row" on public.match_queue;
 create policy "Users can delete own match_queue row"
   on public.match_queue for delete
@@ -108,21 +110,18 @@ create index if not exists conversations_user_b_idx on public.conversations (use
 
 alter table public.conversations enable row level security;
 
--- Only participants can read their conversations
 drop policy if exists "Participants can read conversations" on public.conversations;
 create policy "Participants can read conversations"
   on public.conversations for select
   to authenticated
   using (auth.uid() = user_a or auth.uid() = user_b);
 
--- Participants can update (to set ended_at)
 drop policy if exists "Participants can update conversations" on public.conversations;
 create policy "Participants can update conversations"
   on public.conversations for update
   to authenticated
   using (auth.uid() = user_a or auth.uid() = user_b);
 
--- The find_match RPC inserts rows; allow authenticated inserts
 drop policy if exists "Authenticated can create conversations" on public.conversations;
 create policy "Authenticated can create conversations"
   on public.conversations for insert
@@ -146,51 +145,45 @@ create index if not exists messages_conversation_idx on public.messages (convers
 
 alter table public.messages enable row level security;
 
--- Only participants of the conversation can read messages
+-- IMPORTANT: Realtime needs a simple, non-correlated policy to work reliably.
+-- We use a SECURITY DEFINER helper function to avoid subquery issues in realtime.
+create or replace function public.is_conversation_participant(conv_id uuid, uid uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from public.conversations c
+    where c.id = conv_id
+      and (c.user_a = uid or c.user_b = uid)
+  );
+$$;
+
 drop policy if exists "Participants can read messages" on public.messages;
 create policy "Participants can read messages"
   on public.messages for select
   to authenticated
-  using (
-    exists (
-      select 1 from public.conversations c
-      where c.id = messages.conversation_id
-        and (c.user_a = auth.uid() or c.user_b = auth.uid())
-    )
-  );
+  using (public.is_conversation_participant(conversation_id, auth.uid()));
 
--- Only participants can send messages, and sender_id must be themselves
 drop policy if exists "Participants can insert messages" on public.messages;
 create policy "Participants can insert messages"
   on public.messages for insert
   to authenticated
   with check (
     sender_id = auth.uid()
-    and exists (
-      select 1 from public.conversations c
-      where c.id = messages.conversation_id
-        and (c.user_a = auth.uid() or c.user_b = auth.uid())
-    )
+    and public.is_conversation_participant(conversation_id, auth.uid())
   );
 
--- Sender can update status (for delivered/seen tracking)
 drop policy if exists "Participants can update messages" on public.messages;
 create policy "Participants can update messages"
   on public.messages for update
   to authenticated
-  using (
-    exists (
-      select 1 from public.conversations c
-      where c.id = messages.conversation_id
-        and (c.user_a = auth.uid() or c.user_b = auth.uid())
-    )
-  );
+  using (public.is_conversation_participant(conversation_id, auth.uid()));
 
 
 -- ============================================================
 -- 5. find_match() RPC
--- Matches the current user with the oldest waiting user
--- in the same course. Returns conversation_id + partner info.
 -- ============================================================
 create or replace function public.find_match()
 returns table (
@@ -213,7 +206,6 @@ begin
     return;
   end if;
 
-  -- Make sure I'm in the queue
   select course into v_my_course
   from public.match_queue
   where user_id = v_user_id;
@@ -222,8 +214,6 @@ begin
     return;
   end if;
 
-  -- Find the oldest waiting partner in the same course
-  -- (must not be me, must not already be in a conversation I'm in)
   select mq.*
   into v_partner
   from public.match_queue mq
@@ -237,12 +227,10 @@ begin
     return;
   end if;
 
-  -- Create the conversation
   insert into public.conversations (user_a, user_b, course)
   values (v_user_id, v_partner.user_id, v_my_course)
   returning id into v_conversation_id;
 
-  -- Remove both users from the queue
   delete from public.match_queue
   where user_id in (v_user_id, v_partner.user_id);
 
@@ -261,10 +249,16 @@ grant execute on function public.find_match() to authenticated;
 
 -- ============================================================
 -- 6. REALTIME
--- Enable realtime for messages and match_queue
+-- Enable realtime for messages, conversations, and match_queue
 -- ============================================================
 do $$
 begin
+  -- Ensure the publication exists
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+
+  -- messages
   if not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime'
@@ -274,15 +268,7 @@ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'match_queue'
-  ) then
-    alter publication supabase_realtime add table public.match_queue;
-  end if;
-
+  -- conversations
   if not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime'
@@ -291,4 +277,20 @@ begin
   ) then
     alter publication supabase_realtime add table public.conversations;
   end if;
+
+  -- match_queue
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'match_queue'
+  ) then
+    alter publication supabase_realtime add table public.match_queue;
+  end if;
 end $$;
+
+-- IMPORTANT: Set REPLICA IDENTITY FULL so realtime sends the full row
+-- (needed for DELETE events and for RLS checks on UPDATE/DELETE)
+alter table public.messages replica identity full;
+alter table public.conversations replica identity full;
+alter table public.match_queue replica identity full;
